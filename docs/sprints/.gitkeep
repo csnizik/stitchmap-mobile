@@ -1,0 +1,6 @@
+# Sprint artifacts: plans, reviews, retrospectives.
+#
+# Naming convention:
+#   sprint-<N>-plan.md         — produced before sprint start, stakeholder-approved
+#   sprint-<N>-review.md       — produced at sprint end, stakeholder-facing
+#   sprint-<N>-learnings.md    — internal MLOps retro artifact
