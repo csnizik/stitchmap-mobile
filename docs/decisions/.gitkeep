@@ -1,0 +1,6 @@
+# Architecture Decision Records (ADRs).
+#
+# Naming convention:
+#   ADR-<NNN>-<slug>.md
+#
+# Each ADR captures: context, decision, alternatives considered, consequences.
