@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
 
+# Least-privilege token: CI only needs to read repository contents.
+permissions:
+  contents: read
+
 # Cancel in-progress runs for the same ref to save Actions minutes (free tier).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
