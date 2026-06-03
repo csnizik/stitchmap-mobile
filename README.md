@@ -30,8 +30,56 @@ npm run android   # Android emulator
 npm run web       # Web browser
 ```
 
+## Code Quality
+
+Lint, format, and commit-message standards are enforced locally so code quality stays
+consistent without manual review of trivia.
+
+```bash
+npm run lint          # ESLint (Expo + TypeScript + React Native rules)
+npm run lint:fix      # ESLint with autofix
+npm run format        # Prettier — write changes
+npm run format:check  # Prettier — check only (no writes)
+npm run typecheck     # tsc --noEmit (TypeScript strict mode)
+```
+
+[Husky](https://typicode.github.io/husky/) Git hooks run automatically (installed via the
+`prepare` script on `npm install`):
+
+- **pre-commit** — runs `npm run lint && npm run format:check`
+- **commit-msg** — runs [commitlint](https://commitlint.js.org/) against the staged message
+
+## Commit Message Convention
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) and are
+validated by commitlint using the `@commitlint/config-conventional` ruleset. Each message must
+be structured as:
+
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+Common `type` values: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`,
+`ci`, `chore`, `revert`.
+
+Examples:
+
+```text
+feat: add pattern progress tracker
+fix(auth): handle expired session tokens
+docs: document commit message convention
+chore(deps): bump expo to SDK 56
+```
+
+Breaking changes are flagged with a `!` after the type/scope (e.g. `feat!: drop SDK 53 support`)
+or a `BREAKING CHANGE:` footer.
+
 ## Project Conventions
 
 The team operating model, role definitions, sprint cadence, and contribution rules live in [`.github/AGENTS.md`](.github/AGENTS.md). Sprint artifacts are in [`docs/sprints/`](docs/sprints/); architecture decisions in [`docs/decisions/`](docs/decisions/).
 
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/). Branch from `develop`; pull requests target `develop`. `main` is release-only.
+Branch from `develop`; pull requests target `develop`. `main` is release-only.
