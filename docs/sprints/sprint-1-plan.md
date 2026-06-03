@@ -20,7 +20,7 @@ Ten stories. Full drafts in [`sprint-1-stories.md`](sprint-1-stories.md). Issue 
 | 4 | TBD | Expo Router with Auth/App Route Groups (stub auth) | M | 1 | UX |
 | 5 | TBD | NativeWind Styling Foundation | S | 1 | UX |
 | 6 | TBD | Zustand + Immer State Foundation | S | 1, 8 | — |
-| 7 | TBD | Firebase Auth — Real Sign-In | L | 1, 4, 5, 6 | UX, QA, Backend |
+| 7 | TBD | Firebase Auth — Real Sign-In | L | 1, 4, 5, 6, 8 | UX, QA, Backend |
 | 8 | TBD | Test Harness — jest-expo + RNTL | S | 1 | QA |
 | 9 | TBD | Sentry Error Tracking | S | 1 | — |
 | 10 | TBD | EAS Build Pipeline Skeleton | S | 1 | — |
