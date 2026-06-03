@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+web-build/
+package-lock.json
+assets/
+.DS_Store
+*.tsbuildinfo
+
+# Governance and sprint-snapshot docs are maintained by a separate process
+# (see .github/AGENTS.md) and are intentionally left as authored.
+.github/AGENTS.md
+.github/agents/
+.github/ISSUE_TEMPLATE/
+docs/sprints/
