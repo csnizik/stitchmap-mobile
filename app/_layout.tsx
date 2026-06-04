@@ -8,10 +8,10 @@ export default function RootLayout() {
   const segments = useSegments();
   const router = useRouter();
 
-  useEffect(() => {
-    if (isLoading) {
-      return;
-    }
+useEffect(() => {
+  if (isLoading || segments.length === 0) {
+    return;
+  }
 
     const inAuthGroup = segments[0] === '(auth)';
 
