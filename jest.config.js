@@ -1,7 +1,7 @@
 // Jest configuration using the Expo preset so tests run against the same
-// Babel/transform pipeline as the app. The full test harness (RNTL,
-// coverage scripts, setup files) is expanded in Story 8; this provides the
-// minimum needed to run the Story 6 example-store unit test.
+// Babel/transform pipeline as the app. This wires up the full test harness:
+// the jest-expo preset, React Native Testing Library matchers (via the
+// setup file), coverage collection, and ESM transforms for zustand/immer.
 const expoPreset = require('jest-expo/jest-preset');
 
 // `zustand` and `immer` ship ESM that must be transformed by Babel; add them
@@ -16,4 +16,14 @@ const transformIgnorePatterns = [
 module.exports = {
   ...expoPreset,
   transformIgnorePatterns,
+  // Runs after the test framework is set up; registers React Native Testing
+  // Library matchers and configures the global test environment.
+  setupFilesAfterEnv: [...(expoPreset.setupFilesAfterEnv ?? []), '<rootDir>/jest.setup.js'],
+  collectCoverageFrom: [
+    'app/**/*.{ts,tsx}',
+    'components/**/*.{ts,tsx}',
+    'lib/**/*.{ts,tsx}',
+    '!**/__tests__/**',
+    '!**/*.d.ts',
+  ],
 };

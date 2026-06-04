@@ -23,6 +23,7 @@
   "devDependencies": {
     "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
+    "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.12",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "^56.0.14",
@@ -33,6 +34,7 @@
     "jest": "^29.7.0",
     "jest-expo": "~56.0.0",
     "prettier": "^3.8.3",
+    "react-test-renderer": "^19.2.3",
     "tailwindcss": "^3.4.17",
     "typescript": "~6.0.3"
   },
@@ -47,6 +49,8 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "prepare": "husky"
   },
   "private": true
