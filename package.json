@@ -23,7 +23,7 @@
   "devDependencies": {
     "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
-    "@types/jest": "^30.0.0",
+    "@types/jest": "^29.5.12",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "^56.0.14",
     "eslint": "^9.39.4",
