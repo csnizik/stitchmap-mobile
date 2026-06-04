@@ -40,11 +40,7 @@
       ]
     ],
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "2a8abe4f-ec5e-4cc2-871b-9b1dbee09675"
-      }
-    },
-    "owner": "csnizik"
+      "router": {}
+    }
   }
 }
