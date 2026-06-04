@@ -38,6 +38,9 @@
           "organization": "criss-cross-software-llc"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {}
+    }
   }
 }

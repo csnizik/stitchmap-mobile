@@ -1,0 +1,81 @@
+name: EAS Build
+
+# Manual-only, stakeholder-gated EAS build pipeline.
+#
+# This workflow NEVER runs automatically. It can only be triggered from the
+# Actions tab (workflow_dispatch) and refuses to run unless the person starting
+# it explicitly types the string "true" into the `stakeholder_approved` input.
+# EAS builds consume the free-tier quota (30 builds/mo across iOS + Android), so
+# the gate exists to guarantee no spend or quota usage without explicit approval.
+on:
+  workflow_dispatch:
+    inputs:
+      stakeholder_approved:
+        description: 'Type "true" to confirm the stakeholder approved this build. Any other value refuses the run.'
+        required: true
+        default: 'false'
+      platform:
+        description: 'Platform to build.'
+        required: true
+        type: choice
+        default: 'all'
+        options:
+          - all
+          - android
+          - ios
+      profile:
+        description: 'EAS build profile to use.'
+        required: true
+        type: choice
+        default: 'preview'
+        options:
+          - development
+          - preview
+          - production
+
+# Least-privilege token: this workflow only needs to read repository contents.
+permissions:
+  contents: read
+
+jobs:
+  approval-gate:
+    name: Stakeholder approval gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify stakeholder approval
+        # Refuse (exit non-zero) unless the input is exactly the string "true".
+        # The input is passed via env (not inlined into the script) to avoid
+        # shell injection from the free-text workflow_dispatch value.
+        env:
+          STAKEHOLDER_APPROVED: ${{ inputs.stakeholder_approved }}
+        run: |
+          if [ "$STAKEHOLDER_APPROVED" != "true" ]; then
+            echo "::error::Refusing to run: stakeholder_approved must be exactly 'true' (got '$STAKEHOLDER_APPROVED')."
+            echo "EAS builds consume free-tier quota and must not run without explicit stakeholder approval."
+            exit 1
+          fi
+          echo "Stakeholder approval confirmed. Proceeding with EAS build."
+
+  build:
+    name: EAS Build
+    runs-on: ubuntu-latest
+    needs: approval-gate
+    environment: eas-build
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Run EAS build
+        env:
+          BUILD_PLATFORM: ${{ inputs.platform }}
+          BUILD_PROFILE: ${{ inputs.profile }}
+        run: eas build --platform "$BUILD_PLATFORM" --profile "$BUILD_PROFILE" --non-interactive --no-wait
