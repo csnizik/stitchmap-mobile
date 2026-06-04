@@ -30,6 +30,31 @@ npm run android   # Android emulator
 npm run web       # Web browser
 ```
 
+## Routing
+
+Navigation uses [Expo Router](https://docs.expo.dev/router/introduction/) (file-based
+routing). The `app/` directory defines the route tree:
+
+```
+app/
+  _layout.tsx          # Root layout — reads useAuth() and gates access
+  (auth)/
+    _layout.tsx
+    login.tsx          # /login
+    register.tsx       # /register
+  (app)/
+    _layout.tsx
+    index.tsx          # / (protected home placeholder)
+```
+
+The root layout redirects unauthenticated visitors to `/login`, so only the `(auth)`
+screens are reachable while signed out. Authentication is stubbed in
+[`lib/auth/useAuth.ts`](lib/auth/useAuth.ts), which currently returns
+`{ user: null, isLoading: false }`; the real Firebase implementation arrives in a later
+story. To preview the authenticated shell, temporarily return a non-null `user` from the
+stub. Web builds use the metro bundler with `output: "single"` so deep links such as
+`/login` resolve on direct navigation and browser back/forward works.
+
 ## Code Quality
 
 Lint, format, and commit-message standards are enforced locally so code quality stays

@@ -1,9 +1,9 @@
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { APP_NAME, APP_VERSION } from './constants/app';
+import { APP_NAME, APP_VERSION } from '../../constants/app';
 
-export default function App() {
+export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{APP_NAME}</Text>
