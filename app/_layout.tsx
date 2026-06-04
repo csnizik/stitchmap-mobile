@@ -24,6 +24,18 @@ export default function RootLayout() {
     }
   }, [user, isLoading, segments, router]);
 
+  if (isLoading) {
+    return null;
+  }
+
+  const inAuthGroup = segments[0] === '(auth)';
+  const shouldRedirectToLogin = !user && !inAuthGroup;
+  const shouldRedirectToApp = !!user && inAuthGroup;
+
+  if (shouldRedirectToLogin || shouldRedirectToApp) {
+    return null;
+  }
+
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
