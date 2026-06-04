@@ -96,6 +96,7 @@ npm run lint:fix      # ESLint with autofix
 npm run format        # Prettier — write changes
 npm run format:check  # Prettier — check only (no writes)
 npm run typecheck     # tsc --noEmit (TypeScript strict mode)
+npm run test          # Jest (jest-expo preset)
 ```
 
 [Husky](https://typicode.github.io/husky/) Git hooks run automatically (installed via the
@@ -114,7 +115,7 @@ and any failure fails the run:
 ```bash
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm run test --if-present  # test suite (no-op until the test-harness story adds a `test` script)
+npm run test --if-present  # test suite (jest-expo)
 ```
 
 > **Stakeholder action (manual, GitHub UI):** branch protection on `develop` and `main`
