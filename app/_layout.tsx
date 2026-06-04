@@ -9,7 +9,7 @@ export default function RootLayout() {
   const router = useRouter();
 
 useEffect(() => {
-  if (isLoading || segments.length === 0) {
+  if (isLoading || (segments as string[]).length === 0) {
     return;
   }
 
