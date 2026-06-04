@@ -1,6 +1,6 @@
 jest.mock('@sentry/react-native', () => ({
   init: jest.fn(),
-  wrap: jest.fn((component) => component),
+  wrap: jest.fn(<T>(component: T) => component),
 }));
 
 describe('initSentry', () => {
