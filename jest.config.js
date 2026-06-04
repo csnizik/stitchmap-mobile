@@ -4,16 +4,32 @@
 // minimum needed to run the Story 6 example-store unit test.
 const expoPreset = require('jest-expo/jest-preset');
 
-// `zustand` and `immer` ship ESM that must be transformed by Babel; add them
-// to the Expo preset's first (allow-list) transformIgnorePattern so Jest does
-// not skip them as untransformed node_modules.
+// `zustand`, `immer`, and the `firebase`/`@firebase` packages ship ESM that
+// must be transformed by Babel; add them to the Expo preset's first
+// (allow-list) transformIgnorePattern so Jest does not skip them as
+// untransformed node_modules.
 const [allowList, ...restPatterns] = expoPreset.transformIgnorePatterns;
 const transformIgnorePatterns = [
-  allowList.replace('native-base', 'native-base|zustand|immer'),
+  allowList.replace('native-base', 'native-base|zustand|immer|firebase|@firebase'),
   ...restPatterns,
+];
+
+// Some `@firebase/*` packages ship `.mjs` ESM files (e.g. util's postinstall
+// helper). The Expo preset only transforms `.[jt]sx?`, so register the same
+// Babel transform for `.mjs` and let Jest resolve those extensions.
+const babelTransform = expoPreset.transform['\\.[jt]sx?$'];
+const transform = {
+  ...expoPreset.transform,
+  '^.+\\.mjs$': babelTransform,
+};
+const moduleFileExtensions = [
+  ...(expoPreset.moduleFileExtensions ?? ['ts', 'tsx', 'js', 'jsx', 'json', 'node']),
+  'mjs',
 ];
 
 module.exports = {
   ...expoPreset,
+  transform,
   transformIgnorePatterns,
+  moduleFileExtensions,
 };

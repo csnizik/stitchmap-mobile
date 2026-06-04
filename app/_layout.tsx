@@ -1,11 +1,12 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 
+import { AuthProvider } from '../lib/auth/AuthProvider';
 import { useAuth } from '../lib/auth/useAuth';
 
 import '../global.css';
 
-export default function RootLayout() {
+function RootNavigator() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
@@ -43,5 +44,13 @@ export default function RootLayout() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
     </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <RootNavigator />
+    </AuthProvider>
   );
 }
