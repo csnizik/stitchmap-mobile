@@ -59,7 +59,7 @@ and any failure fails the run:
 ```bash
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
-npm test           # test suite (added by the test-harness story)
+npm run test --if-present  # test suite (no-op until the test-harness story adds a `test` script)
 ```
 
 > **Stakeholder action (manual, GitHub UI):** branch protection on `develop` and `main`
