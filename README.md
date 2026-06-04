@@ -96,7 +96,9 @@ npm run lint:fix      # ESLint with autofix
 npm run format        # Prettier — write changes
 npm run format:check  # Prettier — check only (no writes)
 npm run typecheck     # tsc --noEmit (TypeScript strict mode)
-npm run test          # Jest (jest-expo preset)
+npm run test          # Jest (jest-expo preset + React Native Testing Library)
+npm run test:watch    # Jest in watch mode
+npm run test:coverage # Jest with coverage report
 ```
 
 [Husky](https://typicode.github.io/husky/) Git hooks run automatically (installed via the
