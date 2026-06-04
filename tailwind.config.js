@@ -2,6 +2,7 @@
 // Baseline design tokens are placeholders; the finalized palette, spacing scale,
 // and type ramp are owned by UX in a later sprint (see ADR-001).
 module.exports = {
+  darkMode: 'class',
   content: ['./app/**/*.{js,jsx,ts,tsx}', './components/**/*.{js,jsx,ts,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {
