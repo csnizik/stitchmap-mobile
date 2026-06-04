@@ -3,15 +3,17 @@ import { useEffect } from 'react';
 
 import { useAuth } from '../lib/auth/useAuth';
 
+import '../global.css';
+
 export default function RootLayout() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
-useEffect(() => {
-  if (isLoading || (segments as string[]).length === 0) {
-    return;
-  }
+  useEffect(() => {
+    if (isLoading || (segments as string[]).length === 0) {
+      return;
+    }
 
     const inAuthGroup = segments[0] === '(auth)';
 

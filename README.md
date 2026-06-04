@@ -7,6 +7,7 @@ A universal cross-stitch pattern and progress-tracking app for iOS, Android, and
 - Expo SDK 56 · React Native 0.85 · React 19.2
 - New Architecture + Hermes
 - TypeScript (strict mode)
+- [NativeWind](https://www.nativewind.dev/) v4 (Tailwind CSS utilities) for styling
 
 ## Prerequisites
 
@@ -54,6 +55,35 @@ screens are reachable while signed out. Authentication is stubbed in
 story. To preview the authenticated shell, temporarily return a non-null `user` from the
 stub. Web builds use the metro bundler with `output: "single"` so deep links such as
 `/login` resolve on direct navigation and browser back/forward works.
+
+## Styling
+
+Styling uses [NativeWind](https://www.nativewind.dev/) v4, which brings Tailwind CSS
+utility classes to React Native via the `className` prop and renders consistently on iOS,
+Android, and web. The configuration:
+
+```
+tailwind.config.js   # design tokens + content globs (registers nativewind/preset)
+global.css           # Tailwind entry point (@tailwind base/components/utilities)
+metro.config.js      # Metro wrapped with withNativeWind (input: ./global.css)
+babel.config.js      # babel-preset-expo (jsxImportSource: nativewind) + nativewind/babel
+nativewind-env.d.ts  # className type support (references nativewind/types)
+```
+
+`global.css` is imported once from [`app/_layout.tsx`](app/_layout.tsx). Style components
+with utility classes, e.g.:
+
+```tsx
+<View className="flex-1 items-center justify-center bg-surface-light">
+  <Text className="text-title font-semibold text-brand-700">StitchMap Mobile</Text>
+</View>
+```
+
+Baseline design tokens (`brand`/`surface` colors, `xs`–`xl` spacing, and a
+`caption`/`body`/`title` type ramp) live in `tailwind.config.js` as **placeholders**; UX
+finalizes the palette, spacing scale, and typography in a later sprint. The rationale and
+alternatives considered are recorded in
+[`docs/decisions/ADR-001-styling-with-nativewind.md`](docs/decisions/ADR-001-styling-with-nativewind.md).
 
 ## Code Quality
 
