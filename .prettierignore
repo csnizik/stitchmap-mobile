@@ -10,6 +10,7 @@ assets/
 # Governance and sprint-snapshot docs are maintained by a separate process
 # (see .github/AGENTS.md) and are intentionally left as authored.
 .github/AGENTS.md
+.github/copilot-instructions.md
 .github/agents/
 .github/ISSUE_TEMPLATE/
 docs/sprints/

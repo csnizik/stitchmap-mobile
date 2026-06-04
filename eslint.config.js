@@ -8,5 +8,5 @@ module.exports = [
   eslintConfigPrettier,
   {
     ignores: ['dist/**', 'node_modules/**', '.expo/**'],
-  }
+  },
 ];

@@ -82,7 +82,7 @@ GitHub Actions usage projected at well under the 2,000 min/mo free-tier ceiling 
 - [ ] Create Firebase project on Spark tier (Story 7), enable Email/Password Auth, provide config values
 - [ ] Create Sentry project (Story 9), provide DSN
 - [ ] Expo account login + `eas init` to link this repo (Story 10)
-- [ ] Configure branch protection on `develop` and `main` after Story 3 lands (CI status checks required)
+- [ ] Configure branch protection on `develop` and `main` after Story 3 lands — require the CI status checks (`Lint`, `Typecheck`, `Test`) to pass before merging (GitHub UI: Settings → Branches → Branch protection rules; cannot be automated)
 
 ## Risks & Unknowns
 

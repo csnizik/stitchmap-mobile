@@ -49,6 +49,24 @@ npm run typecheck     # tsc --noEmit (TypeScript strict mode)
 - **pre-commit** — runs `npm run lint && npm run format:check`
 - **commit-msg** — runs [commitlint](https://commitlint.js.org/) against the staged message
 
+## Continuous Integration
+
+CI runs on every pull request targeting `develop` and on every push to `main`, via
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml). After an `install` job warms the
+npm cache, the `lint`, `typecheck`, and `test` checks run in parallel on `ubuntu-latest`
+and any failure fails the run:
+
+```bash
+npm run lint       # ESLint
+npm run typecheck  # tsc --noEmit
+npm run test --if-present  # test suite (no-op until the test-harness story adds a `test` script)
+```
+
+> **Stakeholder action (manual, GitHub UI):** branch protection on `develop` and `main`
+> must be configured to require the `Lint`, `Typecheck`, and `Test` status checks before
+> merging. This cannot be automated; it is tracked in
+> [`docs/sprints/sprint-1-plan.md`](docs/sprints/sprint-1-plan.md) under _Stakeholder Action Items_.
+
 ## Commit Message Convention
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) and are
