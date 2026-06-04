@@ -44,9 +44,13 @@ jobs:
     steps:
       - name: Verify stakeholder approval
         # Refuse (exit non-zero) unless the input is exactly the string "true".
+        # The input is passed via env (not inlined into the script) to avoid
+        # shell injection from the free-text workflow_dispatch value.
+        env:
+          STAKEHOLDER_APPROVED: ${{ inputs.stakeholder_approved }}
         run: |
-          if [ "${{ inputs.stakeholder_approved }}" != "true" ]; then
-            echo "::error::Refusing to run: stakeholder_approved must be exactly 'true' (got '${{ inputs.stakeholder_approved }}')."
+          if [ "$STAKEHOLDER_APPROVED" != "true" ]; then
+            echo "::error::Refusing to run: stakeholder_approved must be exactly 'true' (got '$STAKEHOLDER_APPROVED')."
             echo "EAS builds consume free-tier quota and must not run without explicit stakeholder approval."
             exit 1
           fi
@@ -72,4 +76,7 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
       - name: Run EAS build
-        run: eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive --no-wait
+        env:
+          BUILD_PLATFORM: ${{ inputs.platform }}
+          BUILD_PROFILE: ${{ inputs.profile }}
+        run: eas build --platform "$BUILD_PLATFORM" --profile "$BUILD_PROFILE" --non-interactive --no-wait
