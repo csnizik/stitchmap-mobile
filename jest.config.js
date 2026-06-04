@@ -16,20 +16,15 @@ const transformIgnorePatterns = [
 
 // Some `@firebase/*` packages ship `.mjs` ESM files (e.g. util's postinstall
 // helper). The Expo preset only transforms `.[jt]sx?`, so register the same
-// Babel transform for `.mjs` and let Jest resolve those extensions.
+// Babel transform for `.mjs` (Jest already resolves the `.mjs` extension).
 const babelTransform = expoPreset.transform['\\.[jt]sx?$'];
 const transform = {
   ...expoPreset.transform,
   '^.+\\.mjs$': babelTransform,
 };
-const moduleFileExtensions = [
-  ...(expoPreset.moduleFileExtensions ?? ['ts', 'tsx', 'js', 'jsx', 'json', 'node']),
-  'mjs',
-];
 
 module.exports = {
   ...expoPreset,
   transform,
   transformIgnorePatterns,
-  moduleFileExtensions,
 };
