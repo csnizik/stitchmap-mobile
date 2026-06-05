@@ -8,6 +8,11 @@ open a PR against `develop`, and request review. Don't prompt for confirmation
 mid-task. If a requirement is genuinely ambiguous or blocked, stop and say so in
 the PR rather than guessing.
 
+Before starting, check whether a PR already exists for this issue — open OR
+closed. If one does, continue from that branch (reopen or build on it) instead
+of opening a new one. Do not create a duplicate PR for an issue that has already
+been worked.
+
 ## Stack — do not deviate without flagging it in the PR
 
 - Expo SDK 56, React Native 0.85, React 19.2, New Architecture, Hermes
@@ -48,6 +53,13 @@ checks.
 - Use the PR template; fill out the Definition of Done checklist honestly.
 - Tests live alongside the code and must not require paid services or network
   access to run.
+- Before requesting review, merge the latest `develop` into your branch to keep
+  the conflict surface small. Favor small, promptly-opened PRs over long-lived
+  branches that drift from `develop`.
+- The sandbox cannot run simulators or reach live services. If a change touches
+  styling or any runtime/boot configuration and you could not actually launch
+  the app, say so explicitly in the PR and flag it for a stakeholder smoke test
+  before merge — do not imply boot was verified when it was not.
 
 ## Commands
 
