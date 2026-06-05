@@ -68,12 +68,59 @@ app/
 ```
 
 The root layout redirects unauthenticated visitors to `/login`, so only the `(auth)`
-screens are reachable while signed out. Authentication is stubbed in
-[`lib/auth/useAuth.ts`](lib/auth/useAuth.ts), which currently returns
-`{ user: null, isLoading: false }`; the real Firebase implementation arrives in a later
-story. To preview the authenticated shell, temporarily return a non-null `user` from the
-stub. Web builds use the metro bundler with `output: "single"` so deep links such as
-`/login` resolve on direct navigation and browser back/forward works.
+screens are reachable while signed out. Authentication is backed by Firebase Auth (see
+[Authentication](#authentication)); the root layout reads
+[`useAuth()`](lib/auth/useAuth.ts) and gates access based on the live auth state. Web
+builds use the metro bundler with `output: "single"` so deep links such as `/login`
+resolve on direct navigation and browser back/forward works.
+
+## Authentication
+
+Email/password authentication is powered by the [Firebase JS SDK](https://firebase.google.com/docs/auth).
+The pieces:
+
+```
+lib/firebase/config.ts   # firebaseConfig from EXPO_PUBLIC_FIREBASE_* env vars
+lib/firebase/auth.ts     # initializes the app + Auth (per-platform persistence)
+lib/auth/AuthProvider.tsx # context: { user, isLoading, error, signIn, signUp, signOut }
+lib/auth/useAuth.ts      # consumer hook (must be used within <AuthProvider>)
+lib/auth/errors.ts       # maps Firebase error codes to friendly messages
+```
+
+`AuthProvider` (mounted in [`app/_layout.tsx`](app/_layout.tsx)) subscribes to
+`onAuthStateChanged` and exposes the current user plus `signIn`/`signUp`/`signOut`
+actions. On native (iOS/Android), Auth is initialized with
+`getReactNativePersistence(AsyncStorage)` so sessions survive app restarts; on web,
+Firebase's default browser persistence is used.
+
+### Configuration
+
+The Firebase web config is supplied via environment variables (never committed). Copy the
+template and fill in the values from your Firebase project (console → Project settings →
+Your apps → Web app):
+
+```bash
+cp .env.example .env
+# then edit .env
+```
+
+| Variable                                   | Required |
+| ------------------------------------------ | -------- |
+| `EXPO_PUBLIC_FIREBASE_API_KEY`             | yes      |
+| `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`         | yes      |
+| `EXPO_PUBLIC_FIREBASE_PROJECT_ID`          | yes      |
+| `EXPO_PUBLIC_FIREBASE_APP_ID`              | yes      |
+| `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`      | optional |
+| `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | optional |
+
+A Firebase web config is not a secret (access is enforced by Auth + Security Rules), but
+it is kept out of source so each environment can supply its own project. The `EXPO_PUBLIC_`
+prefix tells Expo to inline the values into the client bundle at build time.
+
+> **Stakeholder action (manual):** create a Firebase project on the Spark (free) tier,
+> enable the Email/Password sign-in provider, and share the config values via a secure
+> channel. The QA test plan for this flow lives in
+> [`docs/qa/sprint-1-story-7-auth-test-plan.md`](docs/qa/sprint-1-story-7-auth-test-plan.md).
 
 ## Styling
 

@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 
+import { AuthProvider } from '../lib/auth/AuthProvider';
 import { useAuth } from '../lib/auth/useAuth';
 import { initSentry } from '../lib/monitoring/sentry';
 
@@ -11,7 +12,7 @@ import '../global.css';
 // captured. This is a no-op when EXPO_PUBLIC_SENTRY_DSN is not configured.
 initSentry();
 
-function RootLayout() {
+function RootNavigator() {
   const { user, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
@@ -49,6 +50,14 @@ function RootLayout() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(app)" />
     </Stack>
+  );
+}
+
+function RootLayout() {
+  return (
+    <AuthProvider>
+      <RootNavigator />
+    </AuthProvider>
   );
 }
 
