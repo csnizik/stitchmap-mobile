@@ -22,6 +22,25 @@ A universal cross-stitch pattern and progress-tracking app for iOS, Android, and
 npm install
 ```
 
+## Environment
+
+Copy the example env file and fill in any values you need for local development:
+
+```bash
+cp .env.example .env
+```
+
+Variables prefixed with `EXPO_PUBLIC_` are inlined into the client bundle at
+build time, so they must not contain secrets.
+
+| Variable                 | Required | Description                                                                        |
+| ------------------------ | -------- | ---------------------------------------------------------------------------------- |
+| `EXPO_PUBLIC_SENTRY_DSN` | No       | Sentry DSN for error tracking. Leave empty to disable Sentry — the app still runs. |
+
+Error tracking is provided by Sentry (see
+[ADR-002](docs/decisions/ADR-002-error-tracking-with-sentry.md)); it only
+initializes when `EXPO_PUBLIC_SENTRY_DSN` is set.
+
 ## Run
 
 ```bash
@@ -143,7 +162,9 @@ npm run lint:fix      # ESLint with autofix
 npm run format        # Prettier — write changes
 npm run format:check  # Prettier — check only (no writes)
 npm run typecheck     # tsc --noEmit (TypeScript strict mode)
-npm run test          # Jest (jest-expo preset)
+npm run test          # Jest (jest-expo preset + React Native Testing Library)
+npm run test:watch    # Jest in watch mode
+npm run test:coverage # Jest with coverage report
 ```
 
 [Husky](https://typicode.github.io/husky/) Git hooks run automatically (installed via the

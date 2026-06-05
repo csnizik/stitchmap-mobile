@@ -37,6 +37,9 @@ checks.
    the PR.
 5. Read the versioned Expo docs at https://docs.expo.dev/versions/v56.0.0/
    before using an Expo API — APIs change between SDK versions.
+6. Add dependencies with `npx expo install <pkg>`, never `npm install <pkg>`.
+  expo install pins versions to the SDK 56 set; npm install floats them and
+  breaks peer ranges (e.g. react / react-test-renderer must be the same version).
 
 ## Conventions
 

@@ -1,10 +1,16 @@
+import * as Sentry from '@sentry/react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 
 import { AuthProvider } from '../lib/auth/AuthProvider';
 import { useAuth } from '../lib/auth/useAuth';
+import { initSentry } from '../lib/monitoring/sentry';
 
 import '../global.css';
+
+// Initialize Sentry as early as possible so errors thrown during boot are
+// captured. This is a no-op when EXPO_PUBLIC_SENTRY_DSN is not configured.
+initSentry();
 
 function RootNavigator() {
   const { user, isLoading } = useAuth();
@@ -47,10 +53,15 @@ function RootNavigator() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <AuthProvider>
       <RootNavigator />
     </AuthProvider>
   );
 }
+
+// Wrap the root layout so Sentry can capture render errors and (when enabled)
+// touch/navigation events. The wrapper is a safe pass-through when Sentry is
+// not initialized.
+export default Sentry.wrap(RootLayout);
