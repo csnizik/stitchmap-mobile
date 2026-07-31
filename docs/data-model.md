@@ -14,13 +14,13 @@ projects, and so progress writes never rewrite the chart.
 Stitches fall into three groups with genuinely different geometry, so the model
 has three layers.
 
-| Layer | Examples | Where it lives |
-|---|---|---|
-| Cell-occupying | full cross, half, quarter, three-quarter | the cell grid |
-| Line | backstitch, straight stitch | a flat list of point pairs |
-| Point | french knot | a flat list of points |
+| Layer          | Examples                                 | Where it lives             |
+| -------------- | ---------------------------------------- | -------------------------- |
+| Cell-occupying | full cross, half, quarter, three-quarter | the cell grid              |
+| Line           | backstitch, straight stitch              | a flat list of point pairs |
+| Point          | french knot                              | a flat list of points      |
 
-Backstitch is why layers exist. It runs along cell *edges*, between grid
+Backstitch is why layers exist. It runs along cell _edges_, between grid
 intersections, so no cell-indexed structure can hold it.
 
 ## Coordinates
@@ -67,7 +67,7 @@ Grids store runs, and **runs never cross a row boundary**:
 interface Grid<T> {
   width: number;
   height: number;
-  rows: Run<T>[][];   // rows.length === height, each row sums to width
+  rows: Run<T>[][]; // rows.length === height, each row sums to width
 }
 ```
 
@@ -82,7 +82,7 @@ The grid does not store cell contents. It stores integers indexing
 Index `0` is always the blank cell.
 
 ```ts
-const content = cellContentAt(pattern, x, y);   // resolves the index for you
+const content = cellContentAt(pattern, x, y); // resolves the index for you
 ```
 
 Build a pattern's cell layer with `buildCellGrid(width, height, cells)`, which
@@ -100,8 +100,8 @@ Line and point progress are run-length encoded boolean lists aligned to
 
 ```ts
 let project = createEmptyProject({ id, pattern, now });
-project = markPlacement(pattern, project, 1, 0, 1, true, now);  // one stitch
-project = markCell(pattern, project, 1, 0, true, now);          // whole cell
+project = markPlacement(pattern, project, 1, 0, 1, true, now); // one stitch
+project = markCell(pattern, project, 1, 0, true, now); // whole cell
 project = markLine(project, 0, true, now);
 ```
 
@@ -119,12 +119,12 @@ This is O(runs), not O(cells), and it cannot drift from the data.
 
 ## Validation
 
-`isPattern` and `isProject` are type guards. When you want to know *why*
+`isPattern` and `isProject` are type guards. When you want to know _why_
 something failed, use the collectors, which return every problem rather than the
 first:
 
 ```ts
-const issues = collectPatternIssues(value);   // string[]
+const issues = collectPatternIssues(value); // string[]
 ```
 
 Some invariants need both documents (progress marking a stitch that does not
@@ -153,13 +153,13 @@ pattern on round trip.
 
 ## Files
 
-| File | Contents |
-|---|---|
-| `types.ts` | Every type and constant |
-| `grid.ts` | RLE grid operations, chunking |
-| `cells.ts` | Canonical ordering, interning |
-| `progress.ts` | Bitmasks, mark operations, derived counts |
-| `guards.ts` | Validation |
-| `serialization.ts` | Parse and serialize, `DomainParseError` |
-| `ids.ts` | Opaque stitch ids |
-| `index.ts` | Public barrel |
+| File               | Contents                                  |
+| ------------------ | ----------------------------------------- |
+| `types.ts`         | Every type and constant                   |
+| `grid.ts`          | RLE grid operations, chunking             |
+| `cells.ts`         | Canonical ordering, interning             |
+| `progress.ts`      | Bitmasks, mark operations, derived counts |
+| `guards.ts`        | Validation                                |
+| `serialization.ts` | Parse and serialize, `DomainParseError`   |
+| `ids.ts`           | Opaque stitch ids                         |
+| `index.ts`         | Public barrel                             |

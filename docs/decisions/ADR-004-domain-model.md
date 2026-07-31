@@ -12,7 +12,7 @@ french knots, and backstitch is not a widening of the cell type:
 
 - A cell can hold more than one stitch (a three-quarter of one color plus a
   quarter of another is common), so a cell is a list, not a value.
-- Backstitch runs along and across cell *edges*, between grid intersections. No
+- Backstitch runs along and across cell _edges_, between grid intersections. No
   cell-indexed structure can hold it at any cell type richness.
 - Once a cell holds several stitches, per-cell boolean progress cannot express
   "the three-quarter is done, the quarter is not."
@@ -113,7 +113,10 @@ punctuation cannot collide with a delimiter.
 Runs stop at row ends. The grid stores one run list per row.
 
 ```ts
-export interface Run<T> { readonly value: T; readonly count: number }
+export interface Run<T> {
+  readonly value: T;
+  readonly count: number;
+}
 
 export interface Grid<T> {
   readonly width: number;
@@ -139,7 +142,10 @@ The cost of forbidding row-crossing runs is bounded and small: worst case
 ## 5. Layers 2 and 3: line and point stitches
 
 ```ts
-export interface Point { readonly x: number; readonly y: number }
+export interface Point {
+  readonly x: number;
+  readonly y: number;
+}
 
 export type LineStitchKind = 'backstitch' | 'straight';
 
@@ -177,12 +183,12 @@ sit at cell centers as new `PointStitchKind` values; couching is a new
 
 Two categories, with different compatibility consequences:
 
-| Change | Compatibility | Version impact |
-|---|---|---|
-| Adding an **optional field** (for example `strands`) | Backward compatible. Old readers ignore it. | None required. |
-| Adding a **new `kind`** (for example `bead`) | **Not** backward compatible. Old readers cannot represent it. | Minor `schemaVersion` bump. |
+| Change                                               | Compatibility                                                 | Version impact              |
+| ---------------------------------------------------- | ------------------------------------------------------------- | --------------------------- |
+| Adding an **optional field** (for example `strands`) | Backward compatible. Old readers ignore it.                   | None required.              |
+| Adding a **new `kind`** (for example `bead`)         | **Not** backward compatible. Old readers cannot represent it. | Minor `schemaVersion` bump. |
 
-The guards therefore tolerate unknown *properties* but reject unknown *kinds*. A
+The guards therefore tolerate unknown _properties_ but reject unknown _kinds_. A
 reader that cannot represent a stitch must fail loudly rather than round-trip a
 pattern while quietly deleting stitches it did not understand.
 
@@ -231,6 +237,7 @@ reintroduced as an explicitly-labelled cache.
 Enforced in `guards.ts`, each with a test.
 
 **Pattern**
+
 1. `cells.rows.length === height`, and every row's counts sum to `width`.
 2. Every run count is a positive integer, and no two adjacent runs share a value.
 3. `cellContents[0]` is `[]`. No other entry is `[]`, and no two entries are
@@ -246,14 +253,11 @@ Enforced in `guards.ts`, each with a test.
 9. `PaletteEntry.color` matches `#rrggbb`.
 10. Unknown `kind` values are rejected; unknown properties are tolerated.
 
-**Project**
-11. `width` and `height` match `cellProgress` dimensions; masks are integers in
-    `[0, 0xffffffff]`.
-12. No mask sets a bit beyond the placement count of the cell content at that
-    position. Requires the pattern, so it lives in
-    `collectProjectAgainstPatternIssues`.
-13. `lineProgress` and `pointProgress` totals match the pattern's list lengths.
-    Also a cross-document check.
+**Project** 11. `width` and `height` match `cellProgress` dimensions; masks are integers in
+`[0, 0xffffffff]`. 12. No mask sets a bit beyond the placement count of the cell content at that
+position. Requires the pattern, so it lives in
+`collectProjectAgainstPatternIssues`. 13. `lineProgress` and `pointProgress` totals match the pattern's list lengths.
+Also a cross-document check.
 
 Items 12 and 13 run wherever a project is loaded next to its pattern, which is
 the repository layer in S2-4 and S2-5.
