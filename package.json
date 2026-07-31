@@ -26,6 +26,7 @@
   "devDependencies": {
     "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.12",
     "@types/react": "~19.2.2",
@@ -54,7 +55,8 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:rules": "firebase emulators:exec --only firestore \"jest --config jest.rules.config.js\""
   },
   "private": true
 }
