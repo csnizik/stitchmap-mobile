@@ -1,120 +1,218 @@
-// Canonical domain types for StitchMap.
-//
-// These are the single source of truth shared by storage, sync, and UI. They
-// are intentionally plain, serializable interfaces (no class instances, no
-// `Date` objects) so a value can round-trip through JSON without losing
-// fidelity — see `serialization.ts`. Timestamps are ISO 8601 strings and ids
-// are opaque strings.
-//
-// The grid is stored row-major with run-length encoding (RLE); see
-// `docs/data-model.md` for the rationale behind that choice.
-
 /**
- * Stable identifier for a palette entry within a pattern. Grid cells reference
- * a palette entry by its `ThreadKey` rather than embedding colour/brand data,
- * so the palette is the single source of truth for a thread's appearance.
+ * Canonical domain types for StitchMap Mobile.
+ *
+ * Design rationale and invariants: docs/decisions/adr-004-domain-model.md
+ *
+ * Three stitch layers share one coordinate space:
+ *   1. Cell-occupying stitches (full, half, quarter, three-quarter) live in the
+ *      cell grid.
+ *   2. Line stitches (backstitch, straight) run between arbitrary points.
+ *   3. Point stitches (french knot) sit at a single point.
+ *
+ * Integer coordinates are grid intersections; half-steps are cell centres.
  */
+
+/** Bumped whenever a stored shape changes in a way readers must know about. */
+export const SCHEMA_VERSION = 1;
+export type SchemaVersion = typeof SCHEMA_VERSION;
+
+/** Identifies a palette entry. Unique within a pattern. */
 export type ThreadKey = string;
 
-/**
- * A single thread/colour in a pattern's palette.
- *
- * `key` is referenced by grid cells; `symbol` is the glyph drawn on a printed
- * chart; `brand`/`code` identify the physical thread (e.g. DMC 310); `label`
- * is the human-readable name.
- */
+/** Opaque identifier for a line or point stitch. Unique within a pattern. */
+export type StitchId = string;
+
+/** A single thread used by a pattern. */
 export interface PaletteEntry {
-  /** Stable key referenced by grid cells. */
-  key: ThreadKey;
-  /** Short symbol drawn on the chart, e.g. "X" or "●". */
-  symbol: string;
-  /** Display colour as a hex string, e.g. "#1A1A1A". */
-  color: string;
-  /** Thread manufacturer / brand, e.g. "DMC". */
-  brand: string;
-  /** Manufacturer's thread code, e.g. "310". */
-  code: string;
-  /** Human-readable label, e.g. "Black". */
-  label: string;
+  readonly key: ThreadKey;
+  /** Chart symbol, for example 'A' or '#'. */
+  readonly symbol: string;
+  /** Display colour as '#rrggbb'. */
+  readonly color: string;
+  /** Manufacturer, for example 'DMC'. */
+  readonly brand: string;
+  /** Manufacturer code, for example '310'. */
+  readonly code: string;
+  /** Human-readable name, for example 'Black'. */
+  readonly label: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Layer 1: cell-occupying stitches
+ * ------------------------------------------------------------------ */
+
+export type Corner = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
+
+export const CORNERS: readonly Corner[] = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
+
+/** 'forward' is the '/' diagonal, 'backward' is the '\' diagonal. */
+export type Slant = 'forward' | 'backward';
+
+export const SLANTS: readonly Slant[] = ['forward', 'backward'];
+
+export type PlacementKind = 'full' | 'half' | 'quarter' | 'threeQuarter';
+
+export const PLACEMENT_KINDS: readonly PlacementKind[] = [
+  'full',
+  'half',
+  'quarter',
+  'threeQuarter',
+];
+
+export interface FullPlacement {
+  readonly kind: 'full';
+  readonly thread: ThreadKey;
+}
+
+export interface HalfPlacement {
+  readonly kind: 'half';
+  readonly slant: Slant;
+  readonly thread: ThreadKey;
+}
+
+export interface QuarterPlacement {
+  readonly kind: 'quarter';
+  readonly corner: Corner;
+  readonly thread: ThreadKey;
 }
 
 /**
- * The contents of a single cell in a pattern grid: either the {@link ThreadKey}
- * of the palette entry to stitch there, or `null` for an intentionally blank
- * (unstitched) cell.
+ * A three-quarter stitch: one half stitch plus a quarter filling an adjacent
+ * quadrant. Only the quarter's corner is stored, because it determines the
+ * half's slant. A quarter at topLeft or bottomRight sits off the '\' diagonal,
+ * so the half must be 'forward'; topRight or bottomLeft implies 'backward'.
+ * Storing both would allow contradictory values.
  */
-export type StitchCell = ThreadKey | null;
+export interface ThreeQuarterPlacement {
+  readonly kind: 'threeQuarter';
+  readonly corner: Corner;
+  readonly thread: ThreadKey;
+}
+
+export type Placement = FullPlacement | HalfPlacement | QuarterPlacement | ThreeQuarterPlacement;
 
 /**
- * A run of identical values: `count` consecutive cells all holding `value`.
- * The building block of the run-length encoding.
+ * The contents of a single cell, in canonical order (see cells.ts).
+ * An empty array is a blank cell.
  */
+export type CellContent = readonly Placement[];
+
+/** Progress masks are 32-bit, so a cell may hold at most 32 placements. */
+export const MAX_PLACEMENTS_PER_CELL = 32;
+
+/* ------------------------------------------------------------------ *
+ * Shared coordinate space
+ * ------------------------------------------------------------------ */
+
+/**
+ * A position on the chart. Integers are grid intersections, half-steps are
+ * cell centres or edge midpoints. `x` is in [0, width], `y` in [0, height].
+ */
+export interface Point {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** Coordinates must be whole multiples of this. */
+export const COORDINATE_STEP = 0.5;
+
+/* ------------------------------------------------------------------ *
+ * Layer 2: line stitches
+ * ------------------------------------------------------------------ */
+
+export type LineStitchKind = 'backstitch' | 'straight';
+
+export const LINE_STITCH_KINDS: readonly LineStitchKind[] = ['backstitch', 'straight'];
+
+export interface LineStitch {
+  readonly id: StitchId;
+  readonly kind: LineStitchKind;
+  readonly from: Point;
+  readonly to: Point;
+  readonly thread: ThreadKey;
+}
+
+/* ------------------------------------------------------------------ *
+ * Layer 3: point stitches
+ * ------------------------------------------------------------------ */
+
+export type PointStitchKind = 'frenchKnot';
+
+export const POINT_STITCH_KINDS: readonly PointStitchKind[] = ['frenchKnot'];
+
+export interface PointStitch {
+  readonly id: StitchId;
+  readonly kind: PointStitchKind;
+  readonly at: Point;
+  readonly thread: ThreadKey;
+}
+
+/* ------------------------------------------------------------------ *
+ * Grid
+ * ------------------------------------------------------------------ */
+
 export interface Run<T> {
-  value: T;
-  count: number;
+  readonly value: T;
+  readonly count: number;
 }
 
 /**
- * A row-major, run-length-encoded grid of `width` × `height` cells.
- *
- * Cells are enumerated left-to-right, top-to-bottom; runs may span row
- * boundaries. The sum of every run's `count` always equals `width * height`.
+ * A run-length encoded grid. Runs never cross a row boundary: `rows.length`
+ * equals `height`, and each row's counts sum to `width`. That makes an N-row
+ * slice a self-contained grid, which is what the Firestore chunking strategy
+ * depends on.
  */
 export interface Grid<T> {
-  /** Number of cells per row. */
-  width: number;
-  /** Number of rows. */
-  height: number;
-  /** Run-length-encoded cells in row-major order. */
-  runs: Run<T>[];
+  readonly width: number;
+  readonly height: number;
+  readonly rows: readonly (readonly Run<T>[])[];
 }
 
-/** The chart for a pattern: which thread (if any) occupies each cell. */
-export type StitchGrid = Grid<StitchCell>;
+/** Indices into `Pattern.cellContents`. */
+export type CellGrid = Grid<number>;
 
-/** Per-cell completion state for a project: `true` where a cell is stitched. */
-export type ProgressGrid = Grid<boolean>;
+/** Per-cell completion bitmasks over that cell's placements. */
+export type ProgressGrid = Grid<number>;
 
-/**
- * A cross-stitch pattern: its dimensions (in stitches), its palette, and the
- * RLE chart referencing that palette.
- */
+/* ------------------------------------------------------------------ *
+ * Aggregates
+ * ------------------------------------------------------------------ */
+
+/** `cellContents[0]` is always the blank cell. */
+export const BLANK_CELL_INDEX = 0;
+
 export interface Pattern {
-  /** Opaque stable id. */
-  id: string;
-  /** Display name. */
-  name: string;
-  /** Width in stitches. */
-  width: number;
-  /** Height in stitches. */
-  height: number;
-  /** All threads used by the chart. */
-  palette: PaletteEntry[];
-  /** Row-major RLE chart; `grid.width`/`grid.height` match `width`/`height`. */
-  grid: StitchGrid;
-  /** Creation timestamp (ISO 8601). */
-  createdAt: string;
-  /** Last-modified timestamp (ISO 8601). */
-  updatedAt: string;
+  readonly schemaVersion: SchemaVersion;
+  readonly id: string;
+  readonly name: string;
+  readonly width: number;
+  readonly height: number;
+  readonly palette: readonly PaletteEntry[];
+  /**
+   * Distinct cell contents, interned. Index 0 is the blank cell; no other
+   * entry is blank and no two entries are equal.
+   */
+  readonly cellContents: readonly CellContent[];
+  readonly cells: CellGrid;
+  readonly lines: readonly LineStitch[];
+  readonly points: readonly PointStitch[];
+  /** ISO 8601 timestamps. */
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
-/**
- * A user's in-progress work against a {@link Pattern}: which cells have been
- * stitched, plus cached counts for quick progress display.
- */
 export interface Project {
-  /** Opaque stable id. */
-  id: string;
-  /** Id of the {@link Pattern} this project tracks. */
-  patternId: string;
-  /** Row-major RLE per-cell completion state. */
-  progress: ProgressGrid;
-  /** Number of cells marked completed. */
-  completedCount: number;
-  /** Number of stitchable (non-blank) cells in the pattern. */
-  totalCount: number;
-  /** Creation timestamp (ISO 8601). */
-  createdAt: string;
-  /** Last-modified timestamp (ISO 8601). */
-  updatedAt: string;
+  readonly schemaVersion: SchemaVersion;
+  readonly id: string;
+  readonly patternId: string;
+  /** Must match the pattern's dimensions. */
+  readonly width: number;
+  readonly height: number;
+  readonly cellProgress: ProgressGrid;
+  /** Run-length encoded over `Pattern.lines` in order. */
+  readonly lineProgress: readonly Run<boolean>[];
+  /** Run-length encoded over `Pattern.points` in order. */
+  readonly pointProgress: readonly Run<boolean>[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
