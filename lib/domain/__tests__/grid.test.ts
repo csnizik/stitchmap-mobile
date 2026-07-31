@@ -1,84 +1,198 @@
 import {
+  chunkRows,
   countCells,
+  decodeRow,
+  encodeRow,
+  filledGrid,
   getCell,
-  gridCellCount,
+  getRow,
+  gridFromRows,
   gridToCells,
+  joinChunks,
   makeGrid,
-  runLengthDecode,
-  runLengthEncode,
+  mapGrid,
+  reduceRuns,
+  rowLength,
+  setCell,
+  sliceRows,
 } from '../grid';
-import type { StitchCell } from '../types';
 
-describe('runLengthEncode / runLengthDecode', () => {
-  it('coalesces adjacent equal cells and round-trips', () => {
-    const cells: StitchCell[] = ['a', 'a', 'a', null, null, 'b'];
-    const runs = runLengthEncode(cells);
-    expect(runs).toEqual([
-      { value: 'a', count: 3 },
-      { value: null, count: 2 },
-      { value: 'b', count: 1 },
+describe('run length encoding', () => {
+  it('collapses adjacent equal values', () => {
+    expect(encodeRow(['a', 'a', 'b', 'b', 'b', 'c'])).toEqual([
+      { value: 'a', count: 2 },
+      { value: 'b', count: 3 },
+      { value: 'c', count: 1 },
     ]);
-    expect(runLengthDecode(runs)).toEqual(cells);
   });
 
-  it('encodes an empty array as no runs', () => {
-    expect(runLengthEncode([])).toEqual([]);
-    expect(runLengthDecode([])).toEqual([]);
+  it('round trips', () => {
+    const values = [1, 1, 2, 3, 3, 3];
+    expect(decodeRow(encodeRow(values))).toEqual(values);
   });
 
-  it('honours a custom equality function', () => {
-    const runs = runLengthEncode(['A', 'a', 'b'], (x, y) => x.toLowerCase() === y.toLowerCase());
-    expect(runs).toEqual([
-      { value: 'A', count: 2 },
-      { value: 'b', count: 1 },
-    ]);
+  it('encodes an empty row as no runs', () => {
+    expect(encodeRow([])).toEqual([]);
+  });
+
+  it('honours a custom equality', () => {
+    const runs = encodeRow(
+      ['A', 'a', 'b'],
+      (a: string, b: string) => a.toLowerCase() === b.toLowerCase(),
+    );
+    expect(runs).toHaveLength(2);
+  });
+
+  it('reports expanded length', () => {
+    expect(
+      rowLength([
+        { value: 0, count: 4 },
+        { value: 1, count: 2 },
+      ]),
+    ).toBe(6);
   });
 });
 
 describe('makeGrid', () => {
-  it('builds an RLE grid whose runs may span rows', () => {
-    const cells: StitchCell[] = ['x', 'x', 'x', 'x'];
-    const grid = makeGrid(2, 2, cells);
-    expect(grid).toEqual({ width: 2, height: 2, runs: [{ value: 'x', count: 4 }] });
-    expect(gridToCells(grid)).toEqual(cells);
-    expect(gridCellCount(grid)).toBe(4);
+  it('keeps runs inside rows', () => {
+    // A single value everywhere still produces one run per row, never one
+    // run spanning the whole grid. This is the chunking invariant.
+    const grid = makeGrid(3, 2, [7, 7, 7, 7, 7, 7]);
+    expect(grid.rows).toHaveLength(2);
+    expect(grid.rows[0]).toEqual([{ value: 7, count: 3 }]);
+    expect(grid.rows[1]).toEqual([{ value: 7, count: 3 }]);
   });
 
-  it('throws when the cell count does not match the dimensions', () => {
-    expect(() => makeGrid(2, 2, ['x'])).toThrow(RangeError);
+  it('rejects a cell count that does not match the dimensions', () => {
+    expect(() => makeGrid(2, 2, [1, 2, 3])).toThrow(RangeError);
   });
 
-  it('throws on negative or non-integer dimensions', () => {
-    expect(() => makeGrid(-1, 2, [])).toThrow(RangeError);
-    expect(() => makeGrid(1.5, 2, [])).toThrow(RangeError);
+  it('rejects non positive dimensions', () => {
+    expect(() => makeGrid(0, 2, [])).toThrow(RangeError);
+    expect(() => makeGrid(2, 2.5, [])).toThrow(RangeError);
+  });
+
+  it('round trips through gridToCells', () => {
+    const cells = [1, 1, 2, 3, 3, 3];
+    expect(gridToCells(makeGrid(3, 2, cells))).toEqual(cells);
   });
 });
 
-describe('getCell', () => {
-  // 3×2 grid:
-  //   a a b
-  //   b b a
-  const grid = makeGrid<StitchCell>(3, 2, ['a', 'a', 'b', 'b', 'b', 'a']);
-
-  it('reads cells by (x, y) across run boundaries', () => {
-    expect(getCell(grid, 0, 0)).toBe('a');
-    expect(getCell(grid, 2, 0)).toBe('b');
-    expect(getCell(grid, 0, 1)).toBe('b');
-    expect(getCell(grid, 2, 1)).toBe('a');
+describe('gridFromRows', () => {
+  it('accepts rows that sum to width', () => {
+    const grid = gridFromRows(2, [[{ value: 0, count: 2 }], [{ value: 1, count: 2 }]]);
+    expect(grid.height).toBe(2);
   });
 
-  it('throws for out-of-bounds coordinates', () => {
+  it('rejects a row that does not sum to width', () => {
+    expect(() => gridFromRows(2, [[{ value: 0, count: 3 }]])).toThrow(RangeError);
+  });
+
+  it('rejects a non positive run count', () => {
+    expect(() => gridFromRows(2, [[{ value: 0, count: 0 }]])).toThrow(RangeError);
+  });
+});
+
+describe('cell access', () => {
+  const grid = makeGrid(3, 2, [1, 1, 1, 2, 2, 3]);
+
+  it('reads cells', () => {
+    expect(getCell(grid, 0, 0)).toBe(1);
+    expect(getCell(grid, 1, 1)).toBe(2);
+    expect(getCell(grid, 2, 1)).toBe(3);
+  });
+
+  it('rejects out of bounds reads', () => {
     expect(() => getCell(grid, 3, 0)).toThrow(RangeError);
     expect(() => getCell(grid, 0, 2)).toThrow(RangeError);
-    expect(() => getCell(grid, -1, 0)).toThrow(RangeError);
+    expect(() => getCell(grid, 0.5, 0)).toThrow(RangeError);
+  });
+
+  it('expands a single row', () => {
+    expect(getRow(grid, 1)).toEqual([2, 2, 3]);
   });
 });
 
-describe('countCells', () => {
-  it('counts matching cells without expanding the grid', () => {
-    const grid = makeGrid<StitchCell>(3, 2, ['a', 'a', 'b', null, 'b', 'a']);
-    expect(countCells(grid, (v) => v !== null)).toBe(5);
-    expect(countCells(grid, (v) => v === 'a')).toBe(3);
-    expect(countCells(grid, (v) => v === null)).toBe(1);
+describe('setCell', () => {
+  it('splits a run', () => {
+    const grid = makeGrid(3, 1, [1, 1, 1]);
+    expect(setCell(grid, 1, 0, 9).rows[0]).toHaveLength(3);
+  });
+
+  it('recoalesces when a value is restored', () => {
+    const grid = makeGrid(3, 1, [1, 2, 1]);
+    expect(setCell(grid, 1, 0, 1).rows[0]).toEqual([{ value: 1, count: 3 }]);
+  });
+
+  it('returns the same reference when nothing changes', () => {
+    const grid = makeGrid(2, 1, [1, 1]);
+    expect(setCell(grid, 0, 0, 1)).toBe(grid);
+  });
+
+  it('does not mutate the original', () => {
+    const grid = makeGrid(2, 1, [1, 1]);
+    setCell(grid, 0, 0, 5);
+    expect(getCell(grid, 0, 0)).toBe(1);
+  });
+});
+
+describe('aggregation', () => {
+  const grid = makeGrid(3, 2, [0, 0, 1, 1, 1, 0]);
+
+  it('counts cells matching a predicate', () => {
+    expect(countCells(grid, (v) => v === 1)).toBe(3);
+  });
+
+  it('reduces over runs weighted by count', () => {
+    expect(reduceRuns(grid, (sum, value, count) => sum + value * count, 0)).toBe(3);
+  });
+
+  it('maps and recoalesces', () => {
+    const mapped = mapGrid(grid, () => 'x');
+    expect(mapped.rows[0]).toEqual([{ value: 'x', count: 3 }]);
+  });
+});
+
+describe('chunking', () => {
+  const grid = makeGrid(
+    4,
+    7,
+    Array.from({ length: 28 }, (_, i) => i % 3),
+  );
+
+  it('slices a self contained grid', () => {
+    const slice = sliceRows(grid, 2, 5);
+    expect(slice.height).toBe(3);
+    expect(slice.width).toBe(4);
+    expect(gridToCells(slice)).toEqual(gridToCells(grid).slice(8, 20));
+  });
+
+  it('rejects an invalid range', () => {
+    expect(() => sliceRows(grid, 3, 3)).toThrow(RangeError);
+    expect(() => sliceRows(grid, 0, 99)).toThrow(RangeError);
+  });
+
+  it('splits into chunks with a short final chunk', () => {
+    const chunks = chunkRows(grid, 3);
+    expect(chunks.map((c) => c.height)).toEqual([3, 3, 1]);
+  });
+
+  it('round trips through join, which is what S2-3 depends on', () => {
+    expect(gridToCells(joinChunks(chunkRows(grid, 3)))).toEqual(gridToCells(grid));
+  });
+
+  it('rejects joining chunks of differing widths', () => {
+    expect(() => joinChunks([filledGrid(2, 1, 0), filledGrid(3, 1, 0)])).toThrow(RangeError);
+  });
+
+  it('rejects joining nothing', () => {
+    expect(() => joinChunks([])).toThrow(RangeError);
+  });
+});
+
+describe('filledGrid', () => {
+  it('produces one run per row', () => {
+    const grid = filledGrid(100, 3, 0);
+    expect(grid.rows.every((row) => row.length === 1)).toBe(true);
   });
 });

@@ -1,71 +1,83 @@
+import { createEmptyProject, markPlacement } from '../progress';
 import {
-  deserializePattern,
-  deserializeProject,
   DomainParseError,
+  parsePattern,
+  parsePatternJson,
+  parseProject,
+  parseProjectJson,
   serializePattern,
   serializeProject,
 } from '../serialization';
-import type { Pattern, Project } from '../types';
-
-const pattern: Pattern = {
-  id: 'p1',
-  name: 'Tiny heart',
-  width: 2,
-  height: 2,
-  palette: [{ key: 'a', symbol: 'X', color: '#000000', brand: 'DMC', code: '310', label: 'Black' }],
-  grid: {
-    width: 2,
-    height: 2,
-    runs: [
-      { value: 'a', count: 2 },
-      { value: null, count: 2 },
-    ],
-  },
-  createdAt: '2026-06-05T00:00:00.000Z',
-  updatedAt: '2026-06-05T01:00:00.000Z',
-};
-
-const project: Project = {
-  id: 'j1',
-  patternId: 'p1',
-  progress: {
-    width: 2,
-    height: 2,
-    runs: [
-      { value: true, count: 1 },
-      { value: false, count: 3 },
-    ],
-  },
-  completedCount: 1,
-  totalCount: 2,
-  createdAt: '2026-06-05T00:00:00.000Z',
-  updatedAt: '2026-06-05T01:00:00.000Z',
-};
+import { LATER, NOW, makePattern } from '../__fixtures__/pattern';
 
 describe('pattern serialization', () => {
-  it('round-trips through serialize/deserialize', () => {
-    expect(deserializePattern(serializePattern(pattern))).toEqual(pattern);
+  const pattern = makePattern();
+
+  it('round trips through JSON', () => {
+    expect(parsePatternJson(serializePattern(pattern))).toEqual(pattern);
   });
 
-  it('throws DomainParseError on invalid JSON', () => {
-    expect(() => deserializePattern('{not json')).toThrow(DomainParseError);
+  it('round trips through a plain object, as Firestore hands it back', () => {
+    const plain: unknown = JSON.parse(JSON.stringify(pattern));
+    expect(parsePattern(plain)).toEqual(pattern);
   });
 
-  it('throws DomainParseError on valid JSON that is not a Pattern', () => {
-    expect(() => deserializePattern(JSON.stringify({ id: 'p1' }))).toThrow(DomainParseError);
+  it('rejects an invalid pattern on the way in', () => {
+    expect(() => parsePattern({ ...pattern, width: -1 })).toThrow(DomainParseError);
+  });
+
+  it('rejects an invalid pattern on the way out, before it reaches storage', () => {
+    expect(() => serializePattern({ ...pattern, width: -1 })).toThrow(DomainParseError);
+  });
+
+  it('rejects malformed JSON', () => {
+    expect(() => parsePatternJson('{not json')).toThrow(DomainParseError);
   });
 });
 
 describe('project serialization', () => {
-  it('round-trips through serialize/deserialize', () => {
-    expect(deserializeProject(serializeProject(project))).toEqual(project);
+  const pattern = makePattern();
+  const project = createEmptyProject({ id: 'project-1', pattern, now: NOW });
+
+  it('round trips', () => {
+    expect(parseProjectJson(serializeProject(project))).toEqual(project);
   });
 
-  it('throws DomainParseError on invalid JSON', () => {
-    expect(() => deserializeProject('nope')).toThrow(DomainParseError);
+  it('round trips after progress is recorded', () => {
+    const marked = markPlacement(pattern, project, 1, 0, 1, true, LATER);
+    expect(parseProjectJson(serializeProject(marked))).toEqual(marked);
   });
 
-  it('throws DomainParseError on valid JSON that is not a Project', () => {
-    expect(() => deserializeProject(serializePattern(pattern))).toThrow(DomainParseError);
+  it('rejects an invalid project', () => {
+    expect(() => parseProject({ ...project, id: '' })).toThrow(DomainParseError);
+  });
+});
+
+describe('DomainParseError', () => {
+  const pattern = makePattern();
+
+  it('carries every issue, not just the first', () => {
+    try {
+      parsePattern({ ...pattern, width: -1, id: '' });
+      throw new Error('expected a throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(DomainParseError);
+      expect((error as DomainParseError).issues.length).toBeGreaterThan(1);
+    }
+  });
+
+  it('names the issues in its message', () => {
+    try {
+      parsePattern({ ...pattern, width: -1 });
+      throw new Error('expected a throw');
+    } catch (error) {
+      expect((error as DomainParseError).message).toContain('width');
+    }
+  });
+
+  it('survives instanceof after transpilation', () => {
+    const error = new DomainParseError('pattern', ['a']);
+    expect(error instanceof DomainParseError).toBe(true);
+    expect(error instanceof Error).toBe(true);
   });
 });

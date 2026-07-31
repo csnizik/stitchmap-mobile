@@ -1,63 +1,90 @@
-// Serialization helpers for the domain model.
-//
-// Domain values are plain JSON-friendly objects, so serialization is just
-// `JSON.stringify`. Deserialization parses the JSON and then runs the matching
-// type guard, throwing a descriptive {@link DomainParseError} when the data is
-// not a valid domain value — callers get a typed value or a clear failure, with
-// no silent coercion.
+/**
+ * Serialization for patterns and projects.
+ *
+ * Two entry points per type: one for plain objects (what Firestore and the
+ * StorageAdapter hand back) and one for JSON strings. Both validate before
+ * returning, so nothing downstream has to re-check invariants.
+ */
 
-import { isPattern, isProject } from './guards';
+import { collectPatternIssues, collectProjectIssues } from './guards';
 import type { Pattern, Project } from './types';
 
-/** Thrown when JSON does not deserialize into a valid domain value. */
+/** Thrown when input does not satisfy the domain invariants. */
 export class DomainParseError extends Error {
-  constructor(message: string) {
-    super(message);
+  readonly issues: readonly string[];
+
+  constructor(what: string, issues: readonly string[]) {
+    const detail = issues.length > 0 ? `: ${issues.join('; ')}` : '';
+    super(`invalid ${what}${detail}`);
     this.name = 'DomainParseError';
+    this.issues = issues;
+    // Required so `instanceof` survives transpilation to ES5 targets.
+    Object.setPrototypeOf(this, DomainParseError.prototype);
   }
 }
 
-function parseJson(json: string, typeName: string): unknown {
+function parseJson(json: string, what: string): unknown {
   try {
-    return JSON.parse(json);
+    return JSON.parse(json) as unknown;
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new DomainParseError(`Invalid JSON for ${typeName}: ${detail}`);
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new DomainParseError(what, [`not valid JSON: ${reason}`]);
   }
 }
 
-/** Serializes a {@link Pattern} to a JSON string. */
+/* ------------------------------------------------------------------ *
+ * Pattern
+ * ------------------------------------------------------------------ */
+
+/**
+ * Validate a plain object as a Pattern.
+ *
+ * @throws DomainParseError listing every invariant that failed.
+ */
+export function parsePattern(value: unknown): Pattern {
+  const issues = collectPatternIssues(value);
+  if (issues.length > 0) {
+    throw new DomainParseError('pattern', issues);
+  }
+  return value as Pattern;
+}
+
+export function parsePatternJson(json: string): Pattern {
+  return parsePattern(parseJson(json, 'pattern'));
+}
+
+/**
+ * Validate on the way out as well as the way in. A corrupt in-memory pattern
+ * should fail here rather than reach storage.
+ */
 export function serializePattern(pattern: Pattern): string {
+  const issues = collectPatternIssues(pattern);
+  if (issues.length > 0) {
+    throw new DomainParseError('pattern', issues);
+  }
   return JSON.stringify(pattern);
 }
 
-/**
- * Parses and validates a JSON string into a {@link Pattern}.
- *
- * @throws DomainParseError when the string is not valid JSON or not a Pattern.
- */
-export function deserializePattern(json: string): Pattern {
-  const value = parseJson(json, 'Pattern');
-  if (!isPattern(value)) {
-    throw new DomainParseError('Parsed value is not a valid Pattern');
+/* ------------------------------------------------------------------ *
+ * Project
+ * ------------------------------------------------------------------ */
+
+export function parseProject(value: unknown): Project {
+  const issues = collectProjectIssues(value);
+  if (issues.length > 0) {
+    throw new DomainParseError('project', issues);
   }
-  return value;
+  return value as Project;
 }
 
-/** Serializes a {@link Project} to a JSON string. */
+export function parseProjectJson(json: string): Project {
+  return parseProject(parseJson(json, 'project'));
+}
+
 export function serializeProject(project: Project): string {
-  return JSON.stringify(project);
-}
-
-/**
- * Parses and validates a JSON string into a {@link Project}.
- *
- * @throws DomainParseError when the string is not valid JSON or not a Project.
- */
-export function deserializeProject(json: string): Project {
-  const value = parseJson(json, 'Project');
-  if (!isProject(value)) {
-    throw new DomainParseError('Parsed value is not a valid Project');
+  const issues = collectProjectIssues(project);
+  if (issues.length > 0) {
+    throw new DomainParseError('project', issues);
   }
-  return value;
+  return JSON.stringify(project);
 }
