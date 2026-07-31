@@ -50,3 +50,4 @@ yarn-error.*
 
 
 .env.local
+.DS_Store
