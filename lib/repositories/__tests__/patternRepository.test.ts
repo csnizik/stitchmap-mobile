@@ -76,9 +76,7 @@ describe('sample pattern', () => {
   });
 
   it('includes both line kinds and a knot at a cell centre', () => {
-    expect(new Set(pattern.lines.map((l) => l.kind))).toEqual(
-      new Set(['backstitch', 'straight']),
-    );
+    expect(new Set(pattern.lines.map((l) => l.kind))).toEqual(new Set(['backstitch', 'straight']));
     expect(pattern.points.some((p) => p.at.x % 1 === 0.5)).toBe(true);
   });
 

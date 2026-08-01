@@ -142,18 +142,9 @@ export class FirestorePatternStore implements RemotePatternStore {
 
     // 3. Stale chunks beyond the new counts. Failure here leaves garbage that
     // readers ignore, not corruption.
-    await this.deleteChunksFrom(
-      patternChunksPath(this.uid, pattern.id),
-      cellChunks.length,
-    );
-    await this.deleteChunksFrom(
-      patternLineChunksPath(this.uid, pattern.id),
-      lineChunks.length,
-    );
-    await this.deleteChunksFrom(
-      patternPointChunksPath(this.uid, pattern.id),
-      pointChunks.length,
-    );
+    await this.deleteChunksFrom(patternChunksPath(this.uid, pattern.id), cellChunks.length);
+    await this.deleteChunksFrom(patternLineChunksPath(this.uid, pattern.id), lineChunks.length);
+    await this.deleteChunksFrom(patternPointChunksPath(this.uid, pattern.id), pointChunks.length);
   }
 
   async load(patternId: string): Promise<Pattern | null> {

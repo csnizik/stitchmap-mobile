@@ -15,13 +15,7 @@
 
 import { buildCellGrid } from '../domain/cells';
 import { SCHEMA_VERSION } from '../domain/types';
-import type {
-  LineStitch,
-  PaletteEntry,
-  Pattern,
-  Placement,
-  PointStitch,
-} from '../domain/types';
+import type { LineStitch, PaletteEntry, Pattern, Placement, PointStitch } from '../domain/types';
 
 const CREATED_AT = '2026-08-01T00:00:00.000Z';
 
@@ -86,21 +80,77 @@ export const SAMPLE_HEIGHT = 8;
  */
 const CELLS: Placement[][] = [
   // 0: a solid cream band, so run-length encoding has something to collapse.
-  [cream], [cream], [cream], [cream], [cream], [cream], [cream], [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
   // 1: blanks around a navy pair.
-  _, _, [navy], [navy], [navy], [navy], _, _,
+  _,
+  _,
+  [navy],
+  [navy],
+  [navy],
+  [navy],
+  _,
+  _,
   // 2: half stitches, both slants.
-  _, [halfF], [halfF], _, _, [halfB], [halfB], _,
+  _,
+  [halfF],
+  [halfF],
+  _,
+  _,
+  [halfB],
+  [halfB],
+  _,
   // 3: quarters.
-  _, [qTL], _, [rose], [rose], _, [qBR], _,
+  _,
+  [qTL],
+  _,
+  [rose],
+  [rose],
+  _,
+  [qBR],
+  _,
   // 4: three-quarters, and a shared cell holding two threads.
-  _, [tqTR], _, [tqBL, qTL], _, [tqBL], _, _,
+  _,
+  [tqTR],
+  _,
+  [tqBL, qTL],
+  _,
+  [tqBL],
+  _,
+  _,
   // 5: a sage row with a gap.
-  [sage], [sage], [sage], _, _, [sage], [sage], [sage],
+  [sage],
+  [sage],
+  [sage],
+  _,
+  _,
+  [sage],
+  [sage],
+  [sage],
   // 6: scattered singles.
-  _, [rose], _, [navy], _, [rose], _, [navy],
+  _,
+  [rose],
+  _,
+  [navy],
+  _,
+  [rose],
+  _,
+  [navy],
   // 7: another solid band.
-  [cream], [cream], [cream], [cream], [cream], [cream], [cream], [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
+  [cream],
 ];
 
 /**
@@ -109,14 +159,50 @@ const CELLS: Placement[][] = [
  */
 const LINES: LineStitch[] = [
   // A backstitch box outlining the navy pair in row 1.
-  { id: 'line-box-top', kind: 'backstitch', from: { x: 2, y: 1 }, to: { x: 6, y: 1 }, thread: 'navy' },
-  { id: 'line-box-right', kind: 'backstitch', from: { x: 6, y: 1 }, to: { x: 6, y: 2 }, thread: 'navy' },
-  { id: 'line-box-bottom', kind: 'backstitch', from: { x: 6, y: 2 }, to: { x: 2, y: 2 }, thread: 'navy' },
-  { id: 'line-box-left', kind: 'backstitch', from: { x: 2, y: 2 }, to: { x: 2, y: 1 }, thread: 'navy' },
+  {
+    id: 'line-box-top',
+    kind: 'backstitch',
+    from: { x: 2, y: 1 },
+    to: { x: 6, y: 1 },
+    thread: 'navy',
+  },
+  {
+    id: 'line-box-right',
+    kind: 'backstitch',
+    from: { x: 6, y: 1 },
+    to: { x: 6, y: 2 },
+    thread: 'navy',
+  },
+  {
+    id: 'line-box-bottom',
+    kind: 'backstitch',
+    from: { x: 6, y: 2 },
+    to: { x: 2, y: 2 },
+    thread: 'navy',
+  },
+  {
+    id: 'line-box-left',
+    kind: 'backstitch',
+    from: { x: 2, y: 2 },
+    to: { x: 2, y: 1 },
+    thread: 'navy',
+  },
   // A diagonal backstitch, to prove lines are not axis-aligned.
-  { id: 'line-diagonal', kind: 'backstitch', from: { x: 1, y: 6 }, to: { x: 3, y: 8 }, thread: 'sage' },
+  {
+    id: 'line-diagonal',
+    kind: 'backstitch',
+    from: { x: 1, y: 6 },
+    to: { x: 3, y: 8 },
+    thread: 'sage',
+  },
   // A long straight stitch starting at an edge midpoint.
-  { id: 'line-straight', kind: 'straight', from: { x: 4.5, y: 5 }, to: { x: 7.5, y: 5 }, thread: 'rose' },
+  {
+    id: 'line-straight',
+    kind: 'straight',
+    from: { x: 4.5, y: 5 },
+    to: { x: 7.5, y: 5 },
+    thread: 'rose',
+  },
 ];
 
 /** French knots: one at an intersection, one at a cell centre. */
