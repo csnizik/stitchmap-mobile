@@ -37,4 +37,5 @@ module.exports = {
     '!**/__tests__/**',
     '!**/*.d.ts',
   ],
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/firestore-tests/'],
 };
