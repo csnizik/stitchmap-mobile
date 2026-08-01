@@ -56,7 +56,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "prepare": "husky",
-    "test:rules": "firebase emulators:exec --only firestore \"jest --config jest.rules.config.js\""
+    "test:rules": "firebase emulators:exec --project demo-stitchmap --only firestore \"jest --config jest.rules.config.js\""
   },
   "private": true
 }
