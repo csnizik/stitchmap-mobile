@@ -113,3 +113,5 @@ com.google.cloud.datastore.core.exception.DatastoreException: No matching allow 
 	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:614)
 	at java.base/java.lang.Thread.run(Thread.java:1516)
 
+*** shutting down gRPC server since JVM is shutting down
+*** server shut down
