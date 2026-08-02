@@ -14,6 +14,9 @@
 import { parsePattern, serializePattern } from '../domain/serialization';
 import type { Pattern } from '../domain/types';
 import type { StorageAdapter } from '../storage/StorageAdapter';
+import { RemoteSyncError } from './errors';
+
+export { RemoteSyncError } from './errors';
 
 const KEY_PREFIX = 'stitchmap:pattern:';
 const INDEX_KEY = 'stitchmap:patterns:index';
@@ -32,24 +35,6 @@ export interface RemotePatternStore {
   load(patternId: string): Promise<Pattern | null>;
   list(): Promise<PatternSummary[]>;
   remove(patternId: string): Promise<void>;
-}
-
-/**
- * Thrown when the local write succeeded but the remote write did not. The
- * distinction matters: the caller's data is safe, only sync is behind.
- */
-export class RemoteSyncError extends Error {
-  readonly patternId: string;
-  readonly cause: unknown;
-
-  constructor(patternId: string, cause: unknown) {
-    const reason = cause instanceof Error ? cause.message : String(cause);
-    super(`pattern "${patternId}" was saved locally but not synced: ${reason}`);
-    this.name = 'RemoteSyncError';
-    this.patternId = patternId;
-    this.cause = cause;
-    Object.setPrototypeOf(this, RemoteSyncError.prototype);
-  }
 }
 
 function summarize(pattern: Pattern): PatternSummary {
