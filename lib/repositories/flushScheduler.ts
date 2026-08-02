@@ -55,8 +55,7 @@ export class FlushScheduler {
     this.maxWaitMs = options.maxWaitMs ?? DEFAULT_MAX_WAIT_MS;
     this.setTimeoutFn =
       options.setTimeoutFn ?? ((handler, ms) => setTimeout(handler, ms) as unknown);
-    this.clearTimeoutFn =
-      options.clearTimeoutFn ?? ((handle) => clearTimeout(handle as never));
+    this.clearTimeoutFn = options.clearTimeoutFn ?? ((handle) => clearTimeout(handle as never));
     this.now = options.now ?? (() => Date.now());
   }
 

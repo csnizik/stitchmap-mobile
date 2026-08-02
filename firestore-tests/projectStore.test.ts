@@ -74,9 +74,7 @@ function makeLargeProject(id: string, width: number, height: number): Project {
 }
 
 async function chunkCount(projectId: string): Promise<number> {
-  const snapshot = await getDocs(
-    collection(db, `users/${UID}/projects/${projectId}/chunks`),
-  );
+  const snapshot = await getDocs(collection(db, `users/${UID}/projects/${projectId}/chunks`));
   return snapshot.size;
 }
 
@@ -97,9 +95,7 @@ describe('round trip', () => {
 
   it('stores an untouched grid compactly, one run per row', async () => {
     await store.save(project);
-    const snapshot = await getDocs(
-      collection(db, `users/${UID}/projects/${project.id}/chunks`),
-    );
+    const snapshot = await getDocs(collection(db, `users/${UID}/projects/${project.id}/chunks`));
     const data = JSON.parse((snapshot.docs[0].data() as { data: string }).data) as number[][];
     // Every row is a single run of zeros: value 0, count width.
     expect(data.every((row) => row.length === 2 && row[0] === 0)).toBe(true);

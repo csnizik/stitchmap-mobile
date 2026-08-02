@@ -24,11 +24,7 @@ import { DomainParseError } from '../domain/serialization';
 import type { Project, Run } from '../domain/types';
 import { chunkDocumentId, packGrid, unpackGrid } from '../firestore/chunking';
 import type { GridChunk } from '../firestore/chunking';
-import {
-  projectChunksPath,
-  projectPath,
-  projectsPath,
-} from '../firestore/paths';
+import { projectChunksPath, projectPath, projectsPath } from '../firestore/paths';
 import type { ProjectSummary, RemoteProjectStore } from './projectRepository';
 
 /** Firestore caps a batch at 500 operations. */
@@ -154,9 +150,7 @@ export class FirestoreProjectStore implements RemoteProjectStore {
   }
 
   private async deleteChunksFrom(projectId: string, keepCount: number): Promise<void> {
-    const snapshot = await getDocs(
-      collection(this.db, projectChunksPath(this.uid, projectId)),
-    );
+    const snapshot = await getDocs(collection(this.db, projectChunksPath(this.uid, projectId)));
     const stale = snapshot.docs.filter((entry) => {
       const index = (entry.data() as { index?: number }).index;
       return typeof index === 'number' && index >= keepCount;

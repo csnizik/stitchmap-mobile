@@ -3,11 +3,7 @@ import { DomainParseError } from '../../domain/serialization';
 import type { Pattern, Project } from '../../domain/types';
 import { createSamplePattern } from '../../samples/samplePattern';
 import { InMemoryStorageAdapter } from '../../storage/StorageAdapter';
-import {
-  DEFAULT_IDLE_MS,
-  DEFAULT_MAX_WAIT_MS,
-  FlushScheduler,
-} from '../flushScheduler';
+import { DEFAULT_IDLE_MS, DEFAULT_MAX_WAIT_MS, FlushScheduler } from '../flushScheduler';
 import { RemoteSyncError } from '../errors';
 import { ProjectRepository } from '../projectRepository';
 import type { ProjectSummary, RemoteProjectStore } from '../projectRepository';
@@ -227,9 +223,7 @@ describe('ProjectRepository, local only', () => {
   });
 
   it('refuses to store an invalid project', async () => {
-    await expect(repo.save({ ...project, width: -1 })).rejects.toBeInstanceOf(
-      DomainParseError,
-    );
+    await expect(repo.save({ ...project, width: -1 })).rejects.toBeInstanceOf(DomainParseError);
   });
 
   it('removes a project and its index entry', async () => {
@@ -265,9 +259,7 @@ describe('ProjectRepository, local only', () => {
       },
     };
     await repo.save(tampered);
-    await expect(repo.getForPattern(project.id, pattern)).rejects.toBeInstanceOf(
-      DomainParseError,
-    );
+    await expect(repo.getForPattern(project.id, pattern)).rejects.toBeInstanceOf(DomainParseError);
   });
 });
 

@@ -10,10 +10,7 @@
  * few seconds of stitching reach local storage but not the account.
  */
 
-import {
-  collectProjectAgainstPatternIssues,
-  collectProjectIssues,
-} from '../domain/guards';
+import { collectProjectAgainstPatternIssues, collectProjectIssues } from '../domain/guards';
 import { markCell, markLine, markPlacement, markPoint } from '../domain/progress';
 import { DomainParseError } from '../domain/serialization';
 import type { Pattern, Project } from '../domain/types';
