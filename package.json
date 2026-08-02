@@ -6,6 +6,7 @@
     "@expo/metro-runtime": "~56.0.13",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@sentry/react-native": "~7.11.0",
+    "@shopify/react-native-skia": "2.6.2",
     "expo": "~56.0.8",
     "expo-constants": "~56.0.16",
     "expo-linking": "~56.0.13",
@@ -60,7 +61,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "prepare": "husky",
-    "test:rules": "firebase emulators:exec --project demo-stitchmap --only firestore \"jest --config jest.rules.config.js\""
+    "test:rules": "firebase emulators:exec --project demo-stitchmap --only firestore \"jest --config jest.rules.config.js\"",
+    "postinstall": "setup-skia-web public"
   },
   "engines": {
     "node": ">=24",
