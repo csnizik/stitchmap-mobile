@@ -18,7 +18,7 @@ function RootNavigator() {
   const router = useRouter();
 
   useEffect(() => {
-    if (isLoading || (segments as string[]).length === 0) {
+    if (isLoading) {
       return;
     }
 
@@ -37,14 +37,10 @@ function RootNavigator() {
     return null;
   }
 
-  const inAuthGroup = segments[0] === '(auth)';
-  const shouldRedirectToLogin = !user && !inAuthGroup;
-  const shouldRedirectToApp = !!user && inAuthGroup;
-
-  if (shouldRedirectToLogin || shouldRedirectToApp) {
-    return null;
-  }
-
+  // The Stack always renders once auth has resolved. Returning null here to
+  // pre-empt a redirect would deadlock: expo-router only populates `segments`
+  // after the navigator mounts, and the effect above needs `segments` to know
+  // where to redirect. Blocking the render starves it of that input.
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(auth)" />
