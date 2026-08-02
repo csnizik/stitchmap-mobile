@@ -22,10 +22,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # node-version-file keeps CI and local development on one version.
+      # A mismatch here silently produces lockfiles that `npm ci` rejects:
+      # npm 10 and npm 11 disagree about platform-specific optional deps.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -40,7 +43,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -57,7 +60,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - name: Install dependencies
         run: npm ci
@@ -74,7 +77,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
       - name: Install dependencies
         run: npm ci
