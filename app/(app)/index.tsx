@@ -1,18 +1,24 @@
 /**
  * The workspace. Seeds the sample pattern on first launch, renders it, and
  * marks stitches as the user taps them.
+ *
+ * In development it also carries a size picker and frame-rate readout, for the
+ * rendering work in #44. Both are compiled out of release builds.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View, useWindowDimensions } from 'react-native';
-import type { LayoutChangeEvent } from 'react-native';
 
+import DevOverlay from '../../components/DevOverlay';
+import type { PatternSizeKey } from '../../components/DevOverlay';
 import PatternHost from '../../components/PatternHost';
 import { placementCountAt } from '../../lib/domain/cells';
 import { getCell } from '../../lib/domain/grid';
+import { countPlacements, createEmptyProject, markCell } from '../../lib/domain/progress';
 import type { Pattern, Project } from '../../lib/domain/types';
 import { useOptionalRepositories } from '../../lib/repositories/RepositoryProvider';
 import { seedSampleData } from '../../lib/repositories/seedSampleData';
+import { PERFORMANCE_SIZES, generatePattern } from '../../lib/samples/generatePattern';
 
 /**
  * Cell size at scale 1. The viewport transform handles fitting and zooming, so
@@ -37,16 +43,22 @@ export default function Workspace() {
   // out. Throwing there would crash a legitimate transient state.
   const repositories = useOptionalRepositories();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
-  console.log('[workspace] render');
 
-  // Measured, not taken from useWindowDimensions. The window is taller than the
-  // canvas (browser chrome, status bars, any surrounding layout), and passing
-  // the window height made "the whole chart fits" mean "the chart runs off the
-  // bottom": zooming out stopped while rows were still off screen.
-  const [layout, setLayout] = useState<Layout | null>(null);
+  /**
+   * Development only. A generated chart replaces the stored one in memory
+   * without touching a repository: persisting 1.1 MB per size change would
+   * measure storage rather than rendering. Progress on a generated chart is
+   * therefore lost on switch, which is fine for a measurement harness.
+   */
+  const [sizeKey, setSizeKey] = useState<PatternSizeKey>('sample');
+  const [generated, setGenerated] = useState<{
+    readonly pattern: Pattern;
+    readonly project: Project;
+  } | null>(null);
 
   const containerRef = useRef<View | null>(null);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const [layout, setLayout] = useState<Layout | null>(null);
 
   // Measured from the mounted node rather than onLayout, which does not fire
   // reliably on react-native-web, and rather than the window, which is taller
@@ -98,12 +110,44 @@ export default function Workspace() {
     };
   }, [load]);
 
+  const handleSelectSize = useCallback((key: PatternSizeKey) => {
+    setSizeKey(key);
+    if (key === 'sample') {
+      setGenerated(null);
+      return;
+    }
+    const now = new Date().toISOString();
+    const pattern = generatePattern({ ...PERFORMANCE_SIZES[key] });
+    setGenerated({
+      pattern,
+      project: createEmptyProject({ id: `${pattern.id}-project`, pattern, now }),
+    });
+  }, []);
+
+  // The generated chart takes precedence when one is loaded.
+  const active = useMemo(() => {
+    if (generated !== null) {
+      return generated;
+    }
+    return state.status === 'ready' ? { pattern: state.pattern, project: state.project } : null;
+  }, [generated, state]);
+
+  const stats = useMemo(() => {
+    if (active === null) {
+      return undefined;
+    }
+    return {
+      placements: countPlacements(active.pattern),
+      runs: active.pattern.cells.rows.reduce((total, row) => total + row.length, 0),
+    };
+  }, [active]);
+
   const handleCellPress = useCallback(
     (x: number, y: number) => {
-      if (repositories === null || state.status !== 'ready') {
+      if (active === null) {
         return;
       }
-      const { pattern, project } = state;
+      const { pattern, project } = active;
 
       // A blank cell has nothing to mark. markCell would be a no-op, but
       // checking here avoids a pointless write and a state update.
@@ -116,9 +160,24 @@ export default function Workspace() {
       // complete it. Marking individual placements within a shared cell is a
       // Phase 3 tool.
       const complete = getCell(project.cellProgress, x, y) === 0;
+      const now = new Date().toISOString();
+
+      // Generated charts are in-memory only, so they update state directly
+      // rather than going through the repository.
+      if (generated !== null) {
+        setGenerated({
+          pattern,
+          project: markCell(pattern, project, x, y, complete, now),
+        });
+        return;
+      }
+
+      if (repositories === null) {
+        return;
+      }
 
       void repositories.projects
-        .markCell(pattern, project, x, y, complete, new Date().toISOString())
+        .markCell(pattern, project, x, y, complete, now)
         .then((next) => {
           setState({ status: 'ready', pattern, project: next });
         })
@@ -129,7 +188,7 @@ export default function Workspace() {
           console.warn('[progress] failed to mark cell', error);
         });
     },
-    [repositories, state],
+    [active, generated, repositories],
   );
 
   if (state.status === 'loading') {
@@ -150,16 +209,19 @@ export default function Workspace() {
 
   return (
     <View ref={containerRef} className="flex-1">
-      {layout !== null && (
+      {layout !== null && active !== null && (
         <PatternHost
-          pattern={state.pattern}
-          project={state.project}
+          // Remounting on a size change resets the viewport, so a new chart
+          // opens fitted rather than inheriting the previous transform.
+          pattern={active.pattern}
+          project={active.project}
           baseCellSize={BASE_CELL_SIZE}
           viewWidth={layout.width}
           viewHeight={layout.height}
           onCellPress={handleCellPress}
         />
       )}
+      {__DEV__ && <DevOverlay selected={sizeKey} onSelect={handleSelectSize} stats={stats} />}
     </View>
   );
 }
