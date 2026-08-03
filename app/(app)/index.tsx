@@ -3,8 +3,9 @@
  * marks stitches as the user taps them.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View, useWindowDimensions } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 
 import PatternHost from '../../components/PatternHost';
 import { placementCountAt } from '../../lib/domain/cells';
@@ -13,18 +14,56 @@ import type { Pattern, Project } from '../../lib/domain/types';
 import { useOptionalRepositories } from '../../lib/repositories/RepositoryProvider';
 import { seedSampleData } from '../../lib/repositories/seedSampleData';
 
+/**
+ * Cell size at scale 1. The viewport transform handles fitting and zooming, so
+ * this does not vary with pattern size; it is the unit the zoom limits and the
+ * hit test are expressed in.
+ */
+const BASE_CELL_SIZE = 20;
+
 type LoadState =
   | { readonly status: 'loading' }
   | { readonly status: 'error'; readonly message: string }
   | { readonly status: 'ready'; readonly pattern: Pattern; readonly project: Project };
+
+interface Layout {
+  readonly width: number;
+  readonly height: number;
+}
 
 export default function Workspace() {
   // Optional, not required: the root layout renders the navigator before the
   // redirect to /login lands, so this screen mounts for one frame while signed
   // out. Throwing there would crash a legitimate transient state.
   const repositories = useOptionalRepositories();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
+  console.log('[workspace] render');
+
+  // Measured, not taken from useWindowDimensions. The window is taller than the
+  // canvas (browser chrome, status bars, any surrounding layout), and passing
+  // the window height made "the whole chart fits" mean "the chart runs off the
+  // bottom": zooming out stopped while rows were still off screen.
+  const [layout, setLayout] = useState<Layout | null>(null);
+
+  const containerRef = useRef<View | null>(null);
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+
+  // Measured from the mounted node rather than onLayout, which does not fire
+  // reliably on react-native-web, and rather than the window, which is taller
+  // than the canvas: passing the window height made "the whole chart fits"
+  // mean "the chart runs off the bottom".
+  useEffect(() => {
+    const node = containerRef.current as unknown as {
+      getBoundingClientRect?: () => DOMRect;
+    } | null;
+    const rect = node?.getBoundingClientRect?.();
+    if (rect !== undefined && rect.width > 0 && rect.height > 0) {
+      setLayout({ width: rect.width, height: rect.height });
+      return;
+    }
+    // Native, where there is no DOM node to measure.
+    setLayout({ width: windowWidth, height: windowHeight });
+  }, [windowWidth, windowHeight, state.status]);
 
   const load = useCallback(async () => {
     if (repositories === null) {
@@ -109,20 +148,18 @@ export default function Workspace() {
     );
   }
 
-  // A fixed base size; the viewport transform handles fitting and zooming, so
-  // this no longer has to scale with the pattern.
-  const BASE_CELL_SIZE = 20;
-
   return (
-    <View className="flex-1">
-      <PatternHost
-        pattern={state.pattern}
-        project={state.project}
-        baseCellSize={BASE_CELL_SIZE}
-        viewWidth={screenWidth}
-        viewHeight={screenHeight}
-        onCellPress={handleCellPress}
-      />
+    <View ref={containerRef} className="flex-1">
+      {layout !== null && (
+        <PatternHost
+          pattern={state.pattern}
+          project={state.project}
+          baseCellSize={BASE_CELL_SIZE}
+          viewWidth={layout.width}
+          viewHeight={layout.height}
+          onCellPress={handleCellPress}
+        />
+      )}
     </View>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * Renders a pattern and its progress with Skia, with pan and zoom.
+ * Renders a pattern and its progress with Skia.
  *
  * Lives outside `app/` deliberately: with Expo Router in dev mode, components
  * inside `app/` are evaluated before CanvasKit finishes loading on web, so any
@@ -14,6 +14,9 @@
  * Paths are built once at `baseCellSize` and scaled by the transform, so
  * zooming never rebuilds geometry.
  *
+ * Input lives in `CanvasInteraction`, which is platform-split: Gesture Handler
+ * on native, DOM pointer and wheel events on web. Rendering is shared.
+ *
  * This is still the naive renderer: every cell is drawn on every frame. Baking
  * the static layer into a `Picture` and culling are #44.
  *
@@ -27,11 +30,7 @@
 
 import { Canvas, Circle, Group, Line, Path, Rect, Skia, vec } from '@shopify/react-native-skia';
 import { useCallback, useMemo } from 'react';
-import { View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
-import type { SharedValue } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
 
 import { getRow } from '../lib/domain/grid';
 import { getRunListValue, isPlacementComplete } from '../lib/domain/progress';
@@ -43,8 +42,9 @@ import type {
   Project,
   ThreadKey,
 } from '../lib/domain/types';
+import CanvasInteraction from './CanvasInteraction';
 import { cellAtPoint } from './hitTest';
-import { canvasToPattern, clampTranslation, contentSize, minScale, zoomAround } from './viewport';
+import { canvasToPattern, clampTranslation, contentSize, minScale } from './viewport';
 import type { Viewport, ViewportBounds } from './viewport';
 
 /** Completed stitches fade back; what remains to stitch stays prominent. */
@@ -164,88 +164,6 @@ interface DrawnPlacement {
   readonly complete: boolean;
 }
 
-/** The mutable state a gesture drives. */
-interface ViewportValues {
-  readonly scale: SharedValue<number>;
-  readonly translateX: SharedValue<number>;
-  readonly translateY: SharedValue<number>;
-  readonly startScale: SharedValue<number>;
-  readonly startX: SharedValue<number>;
-  readonly startY: SharedValue<number>;
-}
-
-/**
- * Build the composed gesture.
- *
- * Deliberately a plain function rather than a hook: React Compiler's
- * immutability rule treats anything passed into a hook as frozen, and mutating
- * `.value` is the entire API of a reanimated shared value. Keeping this out of
- * hook scope satisfies the rule honestly instead of suppressing it.
- *
- * Recreating the gesture each render is fine; GestureDetector diffs it, and the
- * handlers close over shared values whose identity is stable anyway.
- */
-function createGesture(
-  values: ViewportValues,
-  bounds: ViewportBounds,
-  onTap: (canvasX: number, canvasY: number, viewport: Viewport) => void,
-) {
-  const { scale, translateX, translateY, startScale, startX, startY } = values;
-
-  const pan = Gesture.Pan()
-    .onStart(() => {
-      // Deltas are relative to where the gesture began, not the previous frame,
-      // so a clamped edge does not accumulate drift.
-      startX.value = translateX.value;
-      startY.value = translateY.value;
-    })
-    .onUpdate((event) => {
-      const next = clampTranslation(
-        {
-          scale: scale.value,
-          translateX: startX.value + event.translationX,
-          translateY: startY.value + event.translationY,
-        },
-        bounds,
-      );
-      translateX.value = next.translateX;
-      translateY.value = next.translateY;
-    });
-
-  const pinch = Gesture.Pinch()
-    .onStart(() => {
-      startScale.value = scale.value;
-    })
-    .onUpdate((event) => {
-      const next = zoomAround(
-        { scale: scale.value, translateX: translateX.value, translateY: translateY.value },
-        event.focalX,
-        event.focalY,
-        startScale.value * event.scale,
-        bounds,
-      );
-      scale.value = next.scale;
-      translateX.value = next.translateX;
-      translateY.value = next.translateY;
-    });
-
-  const tap = Gesture.Tap()
-    // A drag past this distance is a pan, not a tap. Without it, marking a
-    // stitch every time the chart is repositioned would be maddening.
-    .maxDistance(10)
-    .onEnd((event) => {
-      // scheduleOnRN, not runOnJS: Reanimated 4 moved worklet scheduling into
-      // react-native-worklets and takes arguments directly rather than curried.
-      scheduleOnRN(onTap, event.x, event.y, {
-        scale: scale.value,
-        translateX: translateX.value,
-        translateY: translateY.value,
-      });
-    });
-
-  return Gesture.Exclusive(Gesture.Simultaneous(pan, pinch), tap);
-}
-
 export default function PatternCanvas({
   pattern,
   project,
@@ -302,12 +220,6 @@ export default function PatternCanvas({
       }
     },
     [onCellPress, pattern.width, pattern.height, baseCellSize],
-  );
-
-  const gesture = createGesture(
-    { scale, translateX, translateY, startScale, startX, startY },
-    bounds,
-    handleTap,
   );
 
   // Expanded once per render rather than per cell: getCell is O(runs in row),
@@ -424,8 +336,15 @@ export default function PatternCanvas({
   );
 
   return (
-    <GestureDetector gesture={gesture}>
-      <View style={{ width: viewWidth, height: viewHeight }}>{canvas}</View>
-    </GestureDetector>
+    <CanvasInteraction
+      values={{ scale, translateX, translateY, startScale, startX, startY }}
+      bounds={bounds}
+      baseCellSize={baseCellSize}
+      onTap={handleTap}
+      width={viewWidth}
+      height={viewHeight}
+    >
+      {canvas}
+    </CanvasInteraction>
   );
 }

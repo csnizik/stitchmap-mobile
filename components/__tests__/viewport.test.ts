@@ -1,10 +1,11 @@
 import {
-  MAX_SCALE,
+  MAX_CELL_PIXELS,
   canvasToPattern,
   clamp,
   clampTranslation,
   clampViewport,
   fitScale,
+  maxScale,
   minScale,
   visibleCellRange,
   zoomAround,
@@ -26,6 +27,9 @@ const SMALL: ViewportBounds = {
   contentWidth: 160,
   contentHeight: 160,
 };
+
+/** Matches BASE_CELL_SIZE in the workspace screen. */
+const CELL = 20;
 
 const IDENTITY: Viewport = { scale: 1, translateX: 0, translateY: 0 };
 
@@ -57,24 +61,52 @@ describe('minScale', () => {
     expect(minScale(LARGE)).toBeCloseTo(0.08);
   });
 
-  it('never forces a small chart to zoom in', () => {
-    // fitScale is above 1 here; using it as the minimum would prevent viewing
-    // the chart at its natural size.
-    expect(minScale(SMALL)).toBe(1);
+  it('stops a small chart at the scale where it fills the viewport', () => {
+    // Not capped at 1: zooming out further would strand the chart in empty
+    // space rather than showing more of it.
+    expect(minScale(SMALL)).toBeCloseTo(fitScale(SMALL));
+    expect(minScale(SMALL)).toBeGreaterThan(1);
+  });
+});
+
+describe('maxScale', () => {
+  it('caps zoom by cell size on a large chart', () => {
+    // Scale alone is meaningless: a small chart already fits at a high scale.
+    // What matters is how large one cell ends up on screen.
+    expect(maxScale(LARGE, CELL)).toBe(MAX_CELL_PIXELS / CELL);
+  });
+
+  it('guarantees room to zoom past the fitted view on a small chart', () => {
+    // The 8x8 sample fits at about 5.5 in a desktop window, so a cell-pixel
+    // cap of 6 left almost no range and made zoom look broken.
+    expect(maxScale(SMALL, CELL)).toBeCloseTo(fitScale(SMALL) * 3);
+    expect(maxScale(SMALL, CELL)).toBeGreaterThan(minScale(SMALL));
+  });
+
+  it('never falls below the fit scale', () => {
+    for (const bounds of [LARGE, SMALL]) {
+      expect(maxScale(bounds, CELL)).toBeGreaterThanOrEqual(minScale(bounds));
+    }
+  });
+
+  it('falls back to the fit multiple on a degenerate cell size', () => {
+    expect(maxScale(LARGE, 0)).toBeCloseTo(fitScale(LARGE) * 3);
   });
 });
 
 describe('clampViewport', () => {
   it('rejects zooming past the maximum', () => {
-    expect(clampViewport({ ...IDENTITY, scale: 999 }, LARGE).scale).toBe(MAX_SCALE);
+    expect(clampViewport({ ...IDENTITY, scale: 999 }, LARGE, CELL).scale).toBe(
+      maxScale(LARGE, CELL),
+    );
   });
 
   it('rejects zooming out past the fit scale', () => {
-    expect(clampViewport({ ...IDENTITY, scale: 0.001 }, LARGE).scale).toBeCloseTo(0.08);
+    expect(clampViewport({ ...IDENTITY, scale: 0.001 }, LARGE, CELL).scale).toBeCloseTo(0.08);
   });
 
   it('leaves a scale within range alone', () => {
-    expect(clampViewport({ ...IDENTITY, scale: 2 }, LARGE).scale).toBe(2);
+    expect(clampViewport({ ...IDENTITY, scale: 2 }, LARGE, CELL).scale).toBe(2);
   });
 });
 
@@ -126,7 +158,7 @@ describe('zoomAround', () => {
     const focalY = 400;
 
     const patternPointBefore = canvasToPattern(focalX, focalY, before);
-    const after = zoomAround(before, focalX, focalY, 2, LARGE);
+    const after = zoomAround(before, focalX, focalY, 2, LARGE, CELL);
     const patternPointAfter = canvasToPattern(focalX, focalY, after);
 
     expect(patternPointAfter.x).toBeCloseTo(patternPointBefore.x, 5);
@@ -136,7 +168,7 @@ describe('zoomAround', () => {
   it('holds the focus when zooming out as well', () => {
     const before: Viewport = { scale: 4, translateX: -2000, translateY: -2000 };
     const patternPointBefore = canvasToPattern(200, 400, before);
-    const after = zoomAround(before, 200, 400, 2, LARGE);
+    const after = zoomAround(before, 200, 400, 2, LARGE, CELL);
     const patternPointAfter = canvasToPattern(200, 400, after);
 
     expect(patternPointAfter.x).toBeCloseTo(patternPointBefore.x, 5);
@@ -144,7 +176,7 @@ describe('zoomAround', () => {
   });
 
   it('still respects the scale limits', () => {
-    expect(zoomAround(IDENTITY, 200, 400, 999, LARGE).scale).toBe(MAX_SCALE);
+    expect(zoomAround(IDENTITY, 200, 400, 999, LARGE, CELL).scale).toBe(maxScale(LARGE, CELL));
   });
 });
 
@@ -178,8 +210,8 @@ describe('visibleCellRange', () => {
   const pattern = { width: 250, height: 250 } as never;
 
   it('covers the whole chart when fully zoomed out', () => {
-    const viewport = clampViewport({ ...IDENTITY, scale: 0.001 }, LARGE);
-    const range = visibleCellRange(viewport, LARGE, 20, pattern);
+    const viewport = clampViewport({ ...IDENTITY, scale: 0.001 }, LARGE, CELL);
+    const range = visibleCellRange(viewport, LARGE, CELL, pattern);
     expect(range.startX).toBe(0);
     expect(range.startY).toBe(0);
     expect(range.endX).toBe(250);
@@ -187,14 +219,14 @@ describe('visibleCellRange', () => {
 
   it('narrows to a small window when zoomed in', () => {
     const viewport: Viewport = { scale: 4, translateX: -2000, translateY: -2000 };
-    const range = visibleCellRange(viewport, LARGE, 20, pattern);
+    const range = visibleCellRange(viewport, LARGE, CELL, pattern);
     // 400px of viewport at scale 4 shows 100 pattern px, which is 5 cells.
     expect(range.endX - range.startX).toBeLessThanOrEqual(6);
   });
 
   it('never reports cells outside the pattern', () => {
     const viewport: Viewport = { scale: 0.05, translateX: 0, translateY: 0 };
-    const range = visibleCellRange(viewport, LARGE, 20, pattern);
+    const range = visibleCellRange(viewport, LARGE, CELL, pattern);
     expect(range.startX).toBeGreaterThanOrEqual(0);
     expect(range.endX).toBeLessThanOrEqual(250);
     expect(range.endY).toBeLessThanOrEqual(250);

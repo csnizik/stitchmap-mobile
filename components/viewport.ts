@@ -11,6 +11,9 @@
  * be tested without a renderer.
  */
 
+import type { ReactNode } from 'react';
+import type { SharedValue } from 'react-native-reanimated';
+
 import type { Pattern } from '../lib/domain/types';
 
 export interface Viewport {
@@ -31,10 +34,14 @@ export interface ViewportBounds {
 }
 
 /**
- * Far enough in to tap a single cell comfortably. Against a base cell size of
- * roughly 20px this puts a cell near 160px, which is a large touch target.
+ * How large a single cell may become on screen, in pixels.
+ *
+ * The zoom-in limit is expressed in cell pixels rather than as a scale, because
+ * scale means nothing on its own: an 8x8 chart already fits at a scale above 5,
+ * so a scale-based ceiling let a single stitch fill the entire viewport. What
+ * actually matters is how big one cell ends up.
  */
-export const MAX_SCALE = 8;
+export const MAX_CELL_PIXELS = 120;
 
 export function clamp(value: number, min: number, max: number): number {
   'worklet';
@@ -59,16 +66,29 @@ export function fitScale({
 }
 
 /**
- * The zoom-out limit.
+ * The zoom-out limit: the scale at which the whole chart is visible.
  *
- * For a chart larger than the viewport this is the fit scale, since zooming
- * further out only adds empty space. For a chart smaller than the viewport the
- * fit scale exceeds 1, and using it would force a minimum zoom *in*, so the
- * limit is capped at 1.
+ * Not capped at 1. Capping meant a chart smaller than the viewport could be
+ * zoomed out below its fit scale, leaving it stranded in empty space.
  */
 export function minScale(bounds: ViewportBounds): number {
   'worklet';
-  return Math.min(fitScale(bounds), 1);
+  return fitScale(bounds);
+}
+
+/**
+ * The zoom-in limit.
+ *
+ * Never below the fit scale, so a chart that only fits at high magnification
+ * still has a valid range rather than an inverted one.
+ */
+export function maxScale(bounds: ViewportBounds, baseCellSize: number): number {
+  'worklet';
+  const byCellSize = baseCellSize > 0 ? MAX_CELL_PIXELS / baseCellSize : 0;
+  // Always allow meaningful zoom past the fitted view. A chart small enough to
+  // fit at a high scale would otherwise have almost no range: the 8x8 sample
+  // fits at 5.5 and capped at 6.
+  return Math.max(byCellSize, fitScale(bounds) * 3);
 }
 
 /**
@@ -103,9 +123,13 @@ export function clampTranslation(viewport: Viewport, bounds: ViewportBounds): Vi
 }
 
 /** Apply both limits at once. */
-export function clampViewport(viewport: Viewport, bounds: ViewportBounds): Viewport {
+export function clampViewport(
+  viewport: Viewport,
+  bounds: ViewportBounds,
+  baseCellSize: number,
+): Viewport {
   'worklet';
-  const scale = clamp(viewport.scale, minScale(bounds), MAX_SCALE);
+  const scale = clamp(viewport.scale, minScale(bounds), maxScale(bounds, baseCellSize));
   return clampTranslation({ ...viewport, scale }, bounds);
 }
 
@@ -121,9 +145,10 @@ export function zoomAround(
   focalY: number,
   nextScale: number,
   bounds: ViewportBounds,
+  baseCellSize: number,
 ): Viewport {
   'worklet';
-  const scale = clamp(nextScale, minScale(bounds), MAX_SCALE);
+  const scale = clamp(nextScale, minScale(bounds), maxScale(bounds, baseCellSize));
   const ratio = scale / viewport.scale;
 
   // Keep the pattern point under the focal point stationary: the focal point's
@@ -196,4 +221,31 @@ export function visibleCellRange(
     endX: Math.min(pattern.width, Math.ceil(bottomRight.x / baseCellSize)),
     endY: Math.min(pattern.height, Math.ceil(bottomRight.y / baseCellSize)),
   };
+}
+
+/**
+ * The mutable viewport state a gesture drives.
+ *
+ * Lives here rather than in a component so both the native and web interaction
+ * layers can share it. The type imports are erased at build time, so this file
+ * stays free of runtime dependencies.
+ */
+export interface ViewportValues {
+  readonly scale: SharedValue<number>;
+  readonly translateX: SharedValue<number>;
+  readonly translateY: SharedValue<number>;
+  readonly startScale: SharedValue<number>;
+  readonly startX: SharedValue<number>;
+  readonly startY: SharedValue<number>;
+}
+
+export interface CanvasInteractionProps {
+  readonly values: ViewportValues;
+  readonly bounds: ViewportBounds;
+  /** Needed for the zoom-in limit, which is expressed in cell pixels. */
+  readonly baseCellSize: number;
+  readonly onTap: (canvasX: number, canvasY: number, viewport: Viewport) => void;
+  readonly width: number;
+  readonly height: number;
+  readonly children: ReactNode;
 }
