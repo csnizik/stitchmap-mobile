@@ -17,12 +17,13 @@ import type { ReactNode } from 'react';
 
 import { useAuth } from '../auth/useAuth';
 import { getFirestoreDb } from '../firebase/firestore';
+import { createStorageAdapter } from '../storage/createStorageAdapter';
+import type { StorageAdapter } from '../storage/StorageAdapter';
 import { FirestorePatternStore } from './firestorePatternStore';
 import { FirestoreProjectStore } from './firestoreProjectStore';
 import { PatternRepository } from './patternRepository';
 import { ProjectRepository } from './projectRepository';
-import { createStorageAdapter } from '../storage/createStorageAdapter';
-import type { StorageAdapter } from '../storage/StorageAdapter';
+import { useFlushOnBackground } from './useFlushOnBackground';
 
 export interface Repositories {
   readonly patterns: PatternRepository;
@@ -80,10 +81,15 @@ export function RepositoryProvider({ children, storage, repositories }: Reposito
     };
   }, [uid, adapter, repositories]);
 
-  // Pending progress must reach the server before the repositories are torn
-  // down or replaced. Without this, the last few seconds of stitching before a
-  // sign-out or account switch are lost from the account, though they survive
-  // locally. Reading the ref inside an effect is fine; only render is not.
+  // Progress writes are debounced, so up to 30 seconds of stitching can exist
+  // only on the device at any moment. Backgrounding is the last reliable
+  // chance to write before the OS may kill the app.
+  useFlushOnBackground(value?.projects ?? null);
+
+  // The other loss window is sign-out, which tears these repositories down and
+  // builds new ones. Flushing the outgoing set covers switching accounts as
+  // well as signing out entirely. Reading the ref inside an effect is fine;
+  // only render is not.
   const projectsRef = useRef<ProjectRepository | null>(null);
   useEffect(() => {
     const previous = projectsRef.current;
