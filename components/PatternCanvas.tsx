@@ -28,9 +28,8 @@
  */
 
 import { Canvas, Circle, Group, Line, Path, Rect, Skia, vec } from '@shopify/react-native-skia';
-import { useMemo } from 'react';
-import { Pressable } from 'react-native';
-
+import { useMemo, useRef } from 'react';
+import { View } from 'react-native';
 import { getRow } from '../lib/domain/grid';
 import { getRunListValue, isPlacementComplete } from '../lib/domain/progress';
 import type {
@@ -211,6 +210,8 @@ export default function PatternCanvas({
     return lines;
   }, [pattern.width, pattern.height, cellSize, width, height]);
 
+  const containerRef = useRef<View>(null);
+
   const canvas = (
     <Canvas style={{ width, height }}>
       <Rect x={0} y={0} width={width} height={height} color={BACKGROUND_COLOR} />
@@ -270,20 +271,24 @@ export default function PatternCanvas({
   }
 
   return (
-    // Pressable wraps the canvas rather than Skia handling the touch: the
-    // hit-test is pure arithmetic on the grid and needs no knowledge of the
-    // scene graph. Keeping it outside also means pan and zoom (#43) can
-    // transform the coordinate before it reaches the test.
-    <Pressable
-      onPress={(event) => {
-        const { locationX, locationY } = event.nativeEvent;
-        const hit = cellAtPointInPattern(locationX, locationY, pattern, cellSize);
-        if (hit !== null) {
-          onCellPress(hit.x, hit.y);
-        }
+    // Coordinates come from the touch/pointer event rather than Pressable's
+    // locationX/locationY, which React Native Web leaves undefined. Measuring
+    // the view and subtracting its page offset works identically on native and
+    // web, and pan/zoom (#43) can transform the result before the hit test.
+    <View
+      ref={containerRef}
+      onStartShouldSetResponder={() => true}
+      onResponderRelease={(event) => {
+        const { pageX, pageY } = event.nativeEvent;
+        containerRef.current?.measure((_x, _y, _w, _h, px, py) => {
+          const hit = cellAtPointInPattern(pageX - px, pageY - py, pattern, cellSize);
+          if (hit !== null) {
+            onCellPress(hit.x, hit.y);
+          }
+        });
       }}
     >
       {canvas}
-    </Pressable>
+    </View>
   );
 }

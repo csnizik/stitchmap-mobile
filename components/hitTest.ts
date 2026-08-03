@@ -34,6 +34,12 @@ export function cellAtPoint(
   if (cellSize <= 0) {
     return null;
   }
+  // NaN comparisons are always false, so an unguarded NaN would slip past the
+  // bounds checks below and produce a {NaN, NaN} hit. React Native Web does
+  // not populate locationX/locationY, which is exactly how that arises.
+  if (!Number.isFinite(pointX) || !Number.isFinite(pointY)) {
+    return null;
+  }
 
   const x = Math.floor(pointX / cellSize);
   const y = Math.floor(pointY / cellSize);
