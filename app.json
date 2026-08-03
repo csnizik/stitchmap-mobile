@@ -7,8 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
-    "jsEngine": "hermes",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.csnizik.stitchmapmobile"

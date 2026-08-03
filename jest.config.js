@@ -4,13 +4,16 @@
 // setup file), coverage collection, and ESM transforms for zustand/immer.
 const expoPreset = require('jest-expo/jest-preset');
 
-// `zustand`, `immer`, and the `firebase`/`@firebase` packages ship ESM that
-// must be transformed by Babel; add them to the Expo preset's first
-// (allow-list) transformIgnorePattern so Jest does not skip them as
-// untransformed node_modules.
+// `zustand`, `immer`, the `firebase`/`@firebase` packages, and
+// `@shopify/react-native-skia` all ship ESM that must be transformed by Babel;
+// add them to the Expo preset's first (allow-list) transformIgnorePattern so
+// Jest does not skip them as untransformed node_modules.
 const [allowList, ...restPatterns] = expoPreset.transformIgnorePatterns;
 const transformIgnorePatterns = [
-  allowList.replace('native-base', 'native-base|zustand|immer|firebase|@firebase'),
+  allowList.replace(
+    'native-base',
+    'native-base|zustand|immer|firebase|@firebase|@shopify/react-native-skia',
+  ),
   ...restPatterns,
 ];
 
@@ -27,9 +30,13 @@ module.exports = {
   ...expoPreset,
   transform,
   transformIgnorePatterns,
-  // Runs after the test framework is set up; registers React Native Testing
-  // Library matchers and configures the global test environment.
-  setupFilesAfterEnv: [...(expoPreset.setupFilesAfterEnv ?? []), '<rootDir>/jest.setup.js'],
+  // The Skia setup mocks the native module; without it, importing Skia in a
+  // test throws because JSI bindings cannot install outside a real runtime.
+  setupFilesAfterEnv: [
+    ...(expoPreset.setupFilesAfterEnv ?? []),
+    '@shopify/react-native-skia/jestSetup.js',
+    '<rootDir>/jest.setup.js',
+  ],
   collectCoverageFrom: [
     'app/**/*.{ts,tsx}',
     'components/**/*.{ts,tsx}',
@@ -38,4 +45,5 @@ module.exports = {
     '!**/*.d.ts',
   ],
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/firestore-tests/'],
+  testEnvironment: '@shopify/react-native-skia/jestEnv.js',
 };
