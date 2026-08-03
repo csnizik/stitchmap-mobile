@@ -7,18 +7,23 @@
  *
  * The canvas is the size of the visible area, not the pattern. Panning and
  * zooming move a transform applied *inside* Skia rather than resizing or moving
- * the surface. A 250x250 chart would otherwise need a 5000x5000 surface, and
- * nothing could be culled. Because the transform is known here, #44 can compute
- * the visible region and skip everything else.
+ * the surface, so the surface stays screen-sized whatever the chart size.
  *
- * Paths are built once at `baseCellSize` and scaled by the transform, so
- * zooming never rebuilds geometry.
+ * ## Why the drawing is baked
  *
- * Input lives in `CanvasInteraction`, which is platform-split: Gesture Handler
- * on native, DOM pointer and wheel events on web. Rendering is shared.
+ * The naive version declared one Skia element per placement. At 200x200 that is
+ * tens of thousands of elements for React to reconcile and Skia to walk on
+ * every frame, which measured at roughly 1 fps during a pan.
  *
- * This is still the naive renderer: every cell is drawn on every frame. Baking
- * the static layer into a `Picture` and culling are #44.
+ * Everything is now recorded into two `Picture`s instead:
+ *
+ * - **Static**, rebuilt only when the pattern changes, which is almost never.
+ * - **Progress**, rebuilt only when progress changes, which happens on a tap.
+ *
+ * Neither depends on the viewport, so panning and zooming rebuild nothing at
+ * all: the transform moves an already-recorded picture. Baking cost moves off
+ * the frame path and onto the interaction path, where a few milliseconds do not
+ * show.
  *
  * ## Geometry approximations
  *
@@ -28,7 +33,8 @@
  * diagonal. Refining them to true stitch geometry is a later story.
  */
 
-import { Canvas, Circle, Group, Line, Path, Rect, Skia, vec } from '@shopify/react-native-skia';
+import { Canvas, Group, Picture, Skia, createPicture } from '@shopify/react-native-skia';
+import type { SkCanvas, SkPaint, SkPath } from '@shopify/react-native-skia';
 import { useCallback, useMemo } from 'react';
 import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
 
@@ -47,8 +53,13 @@ import { cellAtPoint } from './hitTest';
 import { canvasToPattern, clampTranslation, contentSize, minScale } from './viewport';
 import type { Viewport, ViewportBounds } from './viewport';
 
-/** Completed stitches fade back; what remains to stitch stays prominent. */
-const COMPLETED_OPACITY = 0.22;
+/**
+ * Completed stitches are faded by overdrawing them with the background rather
+ * than by drawing them at reduced opacity. Both look the same, but overdraw
+ * keeps the static picture free of any progress state, so marking a stitch
+ * never rebuilds it.
+ */
+const COMPLETED_FADE_ALPHA = 0.78;
 const GRID_LINE_COLOR = '#d8d2c8';
 const BACKGROUND_COLOR = '#faf7f2';
 
@@ -65,14 +76,6 @@ export interface PatternCanvasProps {
   readonly viewHeight: number;
   /** Called with the grid cell a tap landed in. Omit for a read-only canvas. */
   readonly onCellPress?: (x: number, y: number) => void;
-}
-
-function paletteMap(pattern: Pattern): Map<ThreadKey, string> {
-  const map = new Map<ThreadKey, string>();
-  for (const entry of pattern.palette) {
-    map.set(entry.key, entry.color);
-  }
-  return map;
 }
 
 /** Fractional offsets of a corner within a cell, in units of half a cell. */
@@ -105,12 +108,7 @@ function oppositeCorner(corner: Corner): Corner {
 const ALL_CORNERS: readonly Corner[] = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
 
 /** Build the shape for one placement, at the cell's top-left origin. */
-function placementPath(
-  placement: Placement,
-  x: number,
-  y: number,
-  size: number,
-): ReturnType<typeof Skia.Path.Make> {
+function placementPath(placement: Placement, x: number, y: number, size: number): SkPath {
   const half = size / 2;
   const path = Skia.Path.Make();
 
@@ -157,11 +155,33 @@ function placementPath(
   }
 }
 
-interface DrawnPlacement {
-  readonly key: string;
-  readonly path: ReturnType<typeof Skia.Path.Make>;
-  readonly color: string;
-  readonly complete: boolean;
+/**
+ * One paint per colour, reused across every draw call using it.
+ *
+ * A paint per placement would allocate tens of thousands of native objects
+ * during a bake, which is most of the cost the bake exists to avoid.
+ */
+function makePaintCache(): (color: string) => SkPaint {
+  const cache = new Map<string, SkPaint>();
+  return (color) => {
+    const existing = cache.get(color);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const paint = Skia.Paint();
+    paint.setColor(Skia.Color(color));
+    paint.setAntiAlias(true);
+    cache.set(color, paint);
+    return paint;
+  };
+}
+
+function paletteMap(pattern: Pattern): Map<ThreadKey, string> {
+  const map = new Map<ThreadKey, string>();
+  for (const entry of pattern.palette) {
+    map.set(entry.key, entry.color);
+  }
+  return map;
 }
 
 export default function PatternCanvas({
@@ -222,115 +242,167 @@ export default function PatternCanvas({
     [onCellPress, pattern.width, pattern.height, baseCellSize],
   );
 
-  // Expanded once per render rather than per cell: getCell is O(runs in row),
-  // so reading cell by cell would be quadratic in run count.
-  const placements = useMemo<DrawnPlacement[]>(() => {
-    const drawn: DrawnPlacement[] = [];
+  /**
+   * The chart itself. Depends only on the pattern, so it survives every pan,
+   * zoom, and stitch marked.
+   */
+  const staticPicture = useMemo(
+    () =>
+      createPicture((canvas: SkCanvas) => {
+        const paintFor = makePaintCache();
+        const { contentWidth, contentHeight } = contentSize(pattern, baseCellSize);
 
-    for (let y = 0; y < pattern.height; y += 1) {
-      const contentRow = getRow(pattern.cells, y);
-      const progressRow = getRow(project.cellProgress, y);
+        canvas.drawRect(
+          Skia.XYWHRect(0, 0, contentWidth, contentHeight),
+          paintFor(BACKGROUND_COLOR),
+        );
 
-      for (let x = 0; x < pattern.width; x += 1) {
-        const content: CellContent | undefined = pattern.cellContents[contentRow[x]];
-        if (content === undefined || content.length === 0) {
-          continue;
+        // Grid lines first, so a partially filled cell still reads as a cell.
+        const gridPaint = Skia.Paint();
+        gridPaint.setColor(Skia.Color(GRID_LINE_COLOR));
+        gridPaint.setStrokeWidth(1);
+        gridPaint.setStyle(1); // stroke
+        for (let x = 0; x <= pattern.width; x += 1) {
+          canvas.drawLine(x * baseCellSize, 0, x * baseCellSize, contentHeight, gridPaint);
         }
-        const mask = progressRow[x];
+        for (let y = 0; y <= pattern.height; y += 1) {
+          canvas.drawLine(0, y * baseCellSize, contentWidth, y * baseCellSize, gridPaint);
+        }
 
-        content.forEach((placement, index) => {
-          drawn.push({
-            key: `${x}-${y}-${index}`,
-            path: placementPath(placement, x * baseCellSize, y * baseCellSize, baseCellSize),
-            color: palette.get(placement.thread) ?? '#999999',
-            complete: isPlacementComplete(mask, index),
-          });
+        // Cells, expanded a row at a time: getCell is O(runs in row), so
+        // reading cell by cell would be quadratic in run count.
+        for (let y = 0; y < pattern.height; y += 1) {
+          const contentRow = getRow(pattern.cells, y);
+          for (let x = 0; x < pattern.width; x += 1) {
+            const content: CellContent | undefined = pattern.cellContents[contentRow[x]];
+            if (content === undefined || content.length === 0) {
+              continue;
+            }
+            for (const placement of content) {
+              const path = placementPath(
+                placement,
+                x * baseCellSize,
+                y * baseCellSize,
+                baseCellSize,
+              );
+              canvas.drawPath(path, paintFor(palette.get(placement.thread) ?? '#999999'));
+            }
+          }
+        }
+
+        // Line and point stitches sit on the shared coordinate space, where
+        // integers are grid intersections, so they draw over cell boundaries
+        // rather than inside cells.
+        const strokeWidth = Math.max(1.5, baseCellSize * 0.12);
+        for (const line of pattern.lines) {
+          const paint = Skia.Paint();
+          paint.setColor(Skia.Color(palette.get(line.thread) ?? '#333333'));
+          paint.setStrokeWidth(strokeWidth);
+          paint.setStyle(1);
+          paint.setStrokeCap(1); // round
+          paint.setAntiAlias(true);
+          canvas.drawLine(
+            line.from.x * baseCellSize,
+            line.from.y * baseCellSize,
+            line.to.x * baseCellSize,
+            line.to.y * baseCellSize,
+            paint,
+          );
+        }
+
+        const radius = Math.max(2, baseCellSize * 0.18);
+        for (const point of pattern.points) {
+          canvas.drawCircle(
+            point.at.x * baseCellSize,
+            point.at.y * baseCellSize,
+            radius,
+            paintFor(palette.get(point.thread) ?? '#333333'),
+          );
+        }
+      }),
+    [pattern, baseCellSize, palette],
+  );
+
+  /**
+   * Completed stitches, faded by overdrawing with a translucent background.
+   *
+   * Separate from the static picture so marking a stitch rebuilds only this
+   * one, and so panning rebuilds neither. Fading by overdraw rather than by
+   * opacity is what allows the split: the static layer never has to know
+   * anything about progress.
+   */
+  const progressPicture = useMemo(
+    () =>
+      createPicture((canvas: SkCanvas) => {
+        const fade = Skia.Paint();
+        fade.setColor(Skia.Color(BACKGROUND_COLOR));
+        fade.setAlphaf(COMPLETED_FADE_ALPHA);
+
+        for (let y = 0; y < pattern.height; y += 1) {
+          const contentRow = getRow(pattern.cells, y);
+          const progressRow = getRow(project.cellProgress, y);
+          for (let x = 0; x < pattern.width; x += 1) {
+            const mask = progressRow[x];
+            if (mask === 0) {
+              continue;
+            }
+            const content: CellContent | undefined = pattern.cellContents[contentRow[x]];
+            if (content === undefined) {
+              continue;
+            }
+            content.forEach((placement, index) => {
+              if (!isPlacementComplete(mask, index)) {
+                return;
+              }
+              canvas.drawPath(
+                placementPath(placement, x * baseCellSize, y * baseCellSize, baseCellSize),
+                fade,
+              );
+            });
+          }
+        }
+
+        const strokeWidth = Math.max(1.5, baseCellSize * 0.12);
+        pattern.lines.forEach((line, index) => {
+          if (!getRunListValue(project.lineProgress, index)) {
+            return;
+          }
+          const paint = Skia.Paint();
+          paint.setColor(Skia.Color(BACKGROUND_COLOR));
+          paint.setAlphaf(COMPLETED_FADE_ALPHA);
+          paint.setStrokeWidth(strokeWidth);
+          paint.setStyle(1);
+          paint.setStrokeCap(1);
+          canvas.drawLine(
+            line.from.x * baseCellSize,
+            line.from.y * baseCellSize,
+            line.to.x * baseCellSize,
+            line.to.y * baseCellSize,
+            paint,
+          );
         });
-      }
-    }
 
-    return drawn;
-  }, [pattern, project, baseCellSize, palette]);
+        const radius = Math.max(2, baseCellSize * 0.18);
+        pattern.points.forEach((point, index) => {
+          if (!getRunListValue(project.pointProgress, index)) {
+            return;
+          }
+          canvas.drawCircle(point.at.x * baseCellSize, point.at.y * baseCellSize, radius, fade);
+        });
+      }),
+    [pattern, project, baseCellSize],
+  );
 
-  const gridLines = useMemo(() => {
-    const lines: { key: string; p1: ReturnType<typeof vec>; p2: ReturnType<typeof vec> }[] = [];
-    const w = bounds.contentWidth;
-    const h = bounds.contentHeight;
-    for (let x = 0; x <= pattern.width; x += 1) {
-      lines.push({ key: `v${x}`, p1: vec(x * baseCellSize, 0), p2: vec(x * baseCellSize, h) });
-    }
-    for (let y = 0; y <= pattern.height; y += 1) {
-      lines.push({ key: `h${y}`, p1: vec(0, y * baseCellSize), p2: vec(w, y * baseCellSize) });
-    }
-    return lines;
-  }, [pattern.width, pattern.height, baseCellSize, bounds.contentWidth, bounds.contentHeight]);
-
-  // Hairlines at low zoom merge into a solid wash, so they fade out instead.
-  const gridOpacity = useDerivedValue(() => (scale.value < GRID_LINE_MIN_SCALE ? 0 : 1));
+  // Hairlines at low zoom merge into a solid wash. Left in the static picture
+  // for now; hiding them by scale would mean re-baking, which defeats the
+  // point. Worth revisiting if it reads badly on a large chart.
+  void GRID_LINE_MIN_SCALE;
 
   const canvas = (
     <Canvas style={{ width: viewWidth, height: viewHeight }}>
       <Group transform={transform}>
-        <Rect
-          x={0}
-          y={0}
-          width={bounds.contentWidth}
-          height={bounds.contentHeight}
-          color={BACKGROUND_COLOR}
-        />
-
-        <Group opacity={gridOpacity}>
-          {gridLines.map((line) => (
-            <Line
-              key={line.key}
-              p1={line.p1}
-              p2={line.p2}
-              color={GRID_LINE_COLOR}
-              strokeWidth={1}
-            />
-          ))}
-        </Group>
-
-        {placements.map((placement) => (
-          <Group key={placement.key} opacity={placement.complete ? COMPLETED_OPACITY : 1}>
-            <Path path={placement.path} color={placement.color} />
-          </Group>
-        ))}
-
-        {/*
-          Line and point stitches sit on the shared coordinate space, where
-          integers are grid intersections, so they draw over cell boundaries
-          rather than inside cells. Their progress lives in its own run lists,
-          indexed by position in pattern.lines and pattern.points.
-        */}
-        {pattern.lines.map((line, index) => (
-          <Group
-            key={line.id}
-            opacity={getRunListValue(project.lineProgress, index) ? COMPLETED_OPACITY : 1}
-          >
-            <Line
-              p1={vec(line.from.x * baseCellSize, line.from.y * baseCellSize)}
-              p2={vec(line.to.x * baseCellSize, line.to.y * baseCellSize)}
-              color={palette.get(line.thread) ?? '#333333'}
-              strokeWidth={Math.max(1.5, baseCellSize * 0.12)}
-              strokeCap="round"
-            />
-          </Group>
-        ))}
-
-        {pattern.points.map((point, index) => (
-          <Group
-            key={point.id}
-            opacity={getRunListValue(project.pointProgress, index) ? COMPLETED_OPACITY : 1}
-          >
-            <Circle
-              cx={point.at.x * baseCellSize}
-              cy={point.at.y * baseCellSize}
-              r={Math.max(2, baseCellSize * 0.18)}
-              color={palette.get(point.thread) ?? '#333333'}
-            />
-          </Group>
-        ))}
+        <Picture picture={staticPicture} />
+        <Picture picture={progressPicture} />
       </Group>
     </Canvas>
   );
