@@ -11,7 +11,8 @@
  * thing a simulated press would, without the indirection.
  */
 
-import { render, waitFor } from '@testing-library/react-native';
+import { act, render, screen, waitFor } from '@testing-library/react-native';
+import { View } from 'react-native';
 
 import { summarizeProgress } from '../../../lib/domain/progress';
 import type { Pattern, Project } from '../../../lib/domain/types';
@@ -59,8 +60,30 @@ function renderWorkspace(repositories: Repositories) {
   );
 }
 
+/**
+ * Drive the onLayout event by hand.
+ *
+ * The screen measures its own size rather than trusting the window, so it
+ * renders nothing until a layout arrives. The test renderer never fires one, so
+ * the canvas would never mount.
+ */
+function fireLayout(width = 400, height = 800): void {
+  const container = screen.UNSAFE_root.findAllByType(View)[0];
+  act(() => {
+    container.props.onLayout?.({
+      nativeEvent: { layout: { x: 0, y: 0, width, height } },
+    });
+  });
+}
+
 /** Wait for seeding to finish and the canvas to receive its props. */
 async function waitForCanvas(): Promise<void> {
+  // Seeding resolves before the canvas can mount, and the canvas needs a
+  // layout to exist at all.
+  await waitFor(() => {
+    expect(screen.UNSAFE_root.findAllByType(View).length).toBeGreaterThan(0);
+  });
+  fireLayout();
   await waitFor(() => {
     expect(mockHostProps.current).not.toBeNull();
   });
