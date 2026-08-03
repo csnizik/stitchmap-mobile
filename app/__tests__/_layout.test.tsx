@@ -40,6 +40,13 @@ jest.mock('../../lib/auth/AuthProvider', () => ({
   AuthProvider: ({ children }: { children: unknown }) => children,
 }));
 
+// Routing is what is under test, not persistence. The real provider builds
+// Firestore-backed repositories as soon as a user is present, which would drag
+// live Firebase config into a test about redirects.
+jest.mock('../../lib/repositories/RepositoryProvider', () => ({
+  RepositoryProvider: ({ children }: { children: unknown }) => children,
+}));
+
 jest.mock('../../lib/auth/useAuth', () => ({
   useAuth: () => ({ user: mockState.user, isLoading: mockState.isLoading }),
 }));
