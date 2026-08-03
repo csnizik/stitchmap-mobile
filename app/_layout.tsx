@@ -8,6 +8,7 @@ import { initSentry } from '../lib/monitoring/sentry';
 
 import '../global.css';
 import { RepositoryProvider } from '../lib/repositories/RepositoryProvider';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 // Initialize Sentry as early as possible so errors thrown during boot are
 // captured. This is a no-op when EXPO_PUBLIC_SENTRY_DSN is not configured.
@@ -52,11 +53,13 @@ function RootNavigator() {
 
 function RootLayout() {
   return (
-    <AuthProvider>
-      <RepositoryProvider>
-        <RootNavigator />
-      </RepositoryProvider>
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <RepositoryProvider>
+          <RootNavigator />
+        </RepositoryProvider>
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 

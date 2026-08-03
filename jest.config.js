@@ -30,11 +30,13 @@ module.exports = {
   ...expoPreset,
   transform,
   transformIgnorePatterns,
-  // The Skia setup mocks the native module; without it, importing Skia in a
-  // test throws because JSI bindings cannot install outside a real runtime.
+  // Skia mocks the native module; gesture-handler installs a JS-only
+  // implementation. Without either, importing them in a test throws because
+  // native bindings cannot load outside a real runtime.
   setupFilesAfterEnv: [
     ...(expoPreset.setupFilesAfterEnv ?? []),
     '@shopify/react-native-skia/jestSetup.js',
+    'react-native-gesture-handler/jestSetup',
     '<rootDir>/jest.setup.js',
   ],
   collectCoverageFrom: [

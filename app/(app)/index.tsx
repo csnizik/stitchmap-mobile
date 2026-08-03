@@ -23,7 +23,7 @@ export default function Workspace() {
   // redirect to /login lands, so this screen mounts for one frame while signed
   // out. Throwing there would crash a legitimate transient state.
   const repositories = useOptionalRepositories();
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
   const load = useCallback(async () => {
@@ -109,16 +109,18 @@ export default function Workspace() {
     );
   }
 
-  // Fit the chart to the screen with a small margin. Pan and zoom are #43;
-  // until then the whole pattern has to be visible at once.
-  const cellSize = Math.max(4, Math.floor((screenWidth - 32) / state.pattern.width));
+  // A fixed base size; the viewport transform handles fitting and zooming, so
+  // this no longer has to scale with the pattern.
+  const BASE_CELL_SIZE = 20;
 
   return (
-    <View className="flex-1 items-center justify-center">
+    <View className="flex-1">
       <PatternHost
         pattern={state.pattern}
         project={state.project}
-        cellSize={cellSize}
+        baseCellSize={BASE_CELL_SIZE}
+        viewWidth={screenWidth}
+        viewHeight={screenHeight}
         onCellPress={handleCellPress}
       />
     </View>

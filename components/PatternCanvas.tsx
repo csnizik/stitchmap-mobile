@@ -1,35 +1,38 @@
 /**
- * Renders a pattern and its progress with Skia.
+ * Renders a pattern and its progress with Skia, with pan and zoom.
  *
  * Lives outside `app/` deliberately: with Expo Router in dev mode, components
  * inside `app/` are evaluated before CanvasKit finishes loading on web, so any
  * Skia component there throws "CanvasKit is not defined".
  *
- * This is the naive renderer. It draws every cell declaratively on every
- * render, which is correct and readable but will not scale. Baking the static
- * layer into a `Picture`, batching with `drawAtlas`, and culling to the
- * viewport are all S3-3 (#44). Do not optimise here.
+ * The canvas is the size of the visible area, not the pattern. Panning and
+ * zooming move a transform applied *inside* Skia rather than resizing or moving
+ * the surface. A 250x250 chart would otherwise need a 5000x5000 surface, and
+ * nothing could be culled. Because the transform is known here, #44 can compute
+ * the visible region and skip everything else.
+ *
+ * Paths are built once at `baseCellSize` and scaled by the transform, so
+ * zooming never rebuilds geometry.
+ *
+ * This is still the naive renderer: every cell is drawn on every frame. Baking
+ * the static layer into a `Picture` and culling are #44.
  *
  * ## Geometry approximations
  *
  * Full and blank cells are exact. The fractional stitches are deliberately
- * rough, per the S3-1 acceptance criteria:
- *
- * - **quarter** draws as a half-size square in its corner. A real quarter
- *   stitch is a small triangle from the corner to the cell centre.
- * - **threeQuarter** draws as three quarter-squares, omitting the one
- *   diagonally opposite its corner.
- * - **half** draws as a triangle on one side of its diagonal. Which side is an
- *   arbitrary but consistent choice.
- *
- * These read clearly at a glance and are unambiguous about which quadrant is
- * occupied, which is what the slice needs. Refining them to true stitch
- * geometry is a later story and a UX decision.
+ * rough, per the S3-1 acceptance criteria: quarters draw as half-size squares,
+ * three-quarters as three of them, and halves as a triangle on one side of the
+ * diagonal. Refining them to true stitch geometry is a later story.
  */
 
 import { Canvas, Circle, Group, Line, Path, Rect, Skia, vec } from '@shopify/react-native-skia';
-import { useMemo, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 import { View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useDerivedValue, useSharedValue } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
+
 import { getRow } from '../lib/domain/grid';
 import { getRunListValue, isPlacementComplete } from '../lib/domain/progress';
 import type {
@@ -40,18 +43,26 @@ import type {
   Project,
   ThreadKey,
 } from '../lib/domain/types';
-import { cellAtPointInPattern } from './hitTest';
+import { cellAtPoint } from './hitTest';
+import { canvasToPattern, clampTranslation, contentSize, minScale, zoomAround } from './viewport';
+import type { Viewport, ViewportBounds } from './viewport';
 
 /** Completed stitches fade back; what remains to stitch stays prominent. */
 const COMPLETED_OPACITY = 0.22;
 const GRID_LINE_COLOR = '#d8d2c8';
 const BACKGROUND_COLOR = '#faf7f2';
 
+/** Grid lines vanish below this scale rather than smearing into a solid block. */
+const GRID_LINE_MIN_SCALE = 0.35;
+
 export interface PatternCanvasProps {
   readonly pattern: Pattern;
   readonly project: Project;
-  /** Side length of one cell in pixels. */
-  readonly cellSize: number;
+  /** Cell size in pixels at scale 1. */
+  readonly baseCellSize: number;
+  /** Visible area. The Skia surface is this size regardless of pattern size. */
+  readonly viewWidth: number;
+  readonly viewHeight: number;
   /** Called with the grid cell a tap landed in. Omit for a read-only canvas. */
   readonly onCellPress?: (x: number, y: number) => void;
 }
@@ -93,9 +104,7 @@ function oppositeCorner(corner: Corner): Corner {
 
 const ALL_CORNERS: readonly Corner[] = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
 
-/**
- * Build the shape for one placement, positioned at the cell's top-left origin.
- */
+/** Build the shape for one placement, at the cell's top-left origin. */
 function placementPath(
   placement: Placement,
   x: number,
@@ -131,9 +140,8 @@ function placementPath(
     }
 
     case 'half': {
-      // A triangle on one side of the diagonal. 'forward' is the "/" diagonal,
-      // running bottom-left to top-right; this fills the lower-right of it.
-      // 'backward' is "\", filled on the lower-left.
+      // 'forward' is the "/" diagonal, running bottom-left to top-right; this
+      // fills the lower-right of it. 'backward' is "\", filled lower-left.
       if (placement.slant === 'forward') {
         path.moveTo(x, y + size);
         path.lineTo(x + size, y);
@@ -156,16 +164,151 @@ interface DrawnPlacement {
   readonly complete: boolean;
 }
 
+/** The mutable state a gesture drives. */
+interface ViewportValues {
+  readonly scale: SharedValue<number>;
+  readonly translateX: SharedValue<number>;
+  readonly translateY: SharedValue<number>;
+  readonly startScale: SharedValue<number>;
+  readonly startX: SharedValue<number>;
+  readonly startY: SharedValue<number>;
+}
+
+/**
+ * Build the composed gesture.
+ *
+ * Deliberately a plain function rather than a hook: React Compiler's
+ * immutability rule treats anything passed into a hook as frozen, and mutating
+ * `.value` is the entire API of a reanimated shared value. Keeping this out of
+ * hook scope satisfies the rule honestly instead of suppressing it.
+ *
+ * Recreating the gesture each render is fine; GestureDetector diffs it, and the
+ * handlers close over shared values whose identity is stable anyway.
+ */
+function createGesture(
+  values: ViewportValues,
+  bounds: ViewportBounds,
+  onTap: (canvasX: number, canvasY: number, viewport: Viewport) => void,
+) {
+  const { scale, translateX, translateY, startScale, startX, startY } = values;
+
+  const pan = Gesture.Pan()
+    .onStart(() => {
+      // Deltas are relative to where the gesture began, not the previous frame,
+      // so a clamped edge does not accumulate drift.
+      startX.value = translateX.value;
+      startY.value = translateY.value;
+    })
+    .onUpdate((event) => {
+      const next = clampTranslation(
+        {
+          scale: scale.value,
+          translateX: startX.value + event.translationX,
+          translateY: startY.value + event.translationY,
+        },
+        bounds,
+      );
+      translateX.value = next.translateX;
+      translateY.value = next.translateY;
+    });
+
+  const pinch = Gesture.Pinch()
+    .onStart(() => {
+      startScale.value = scale.value;
+    })
+    .onUpdate((event) => {
+      const next = zoomAround(
+        { scale: scale.value, translateX: translateX.value, translateY: translateY.value },
+        event.focalX,
+        event.focalY,
+        startScale.value * event.scale,
+        bounds,
+      );
+      scale.value = next.scale;
+      translateX.value = next.translateX;
+      translateY.value = next.translateY;
+    });
+
+  const tap = Gesture.Tap()
+    // A drag past this distance is a pan, not a tap. Without it, marking a
+    // stitch every time the chart is repositioned would be maddening.
+    .maxDistance(10)
+    .onEnd((event) => {
+      // scheduleOnRN, not runOnJS: Reanimated 4 moved worklet scheduling into
+      // react-native-worklets and takes arguments directly rather than curried.
+      scheduleOnRN(onTap, event.x, event.y, {
+        scale: scale.value,
+        translateX: translateX.value,
+        translateY: translateY.value,
+      });
+    });
+
+  return Gesture.Exclusive(Gesture.Simultaneous(pan, pinch), tap);
+}
+
 export default function PatternCanvas({
   pattern,
   project,
-  cellSize,
+  baseCellSize,
+  viewWidth,
+  viewHeight,
   onCellPress,
 }: PatternCanvasProps) {
-  const width = pattern.width * cellSize;
-  const height = pattern.height * cellSize;
-
   const palette = useMemo(() => paletteMap(pattern), [pattern]);
+
+  const bounds = useMemo<ViewportBounds>(
+    () => ({
+      viewWidth,
+      viewHeight,
+      ...contentSize(pattern, baseCellSize),
+    }),
+    [viewWidth, viewHeight, pattern, baseCellSize],
+  );
+
+  // Start fully zoomed out and centred, so the first sight of a chart is the
+  // whole chart.
+  const initial = useMemo(() => {
+    const fitted = minScale(bounds);
+    return clampTranslation({ scale: fitted, translateX: 0, translateY: 0 }, bounds);
+  }, [bounds]);
+
+  const scale = useSharedValue(initial.scale);
+  const translateX = useSharedValue(initial.translateX);
+  const translateY = useSharedValue(initial.translateY);
+  const startScale = useSharedValue(initial.scale);
+  const startX = useSharedValue(initial.translateX);
+  const startY = useSharedValue(initial.translateY);
+
+  const transform = useDerivedValue(() => [
+    { translateX: translateX.value },
+    { translateY: translateY.value },
+    { scale: scale.value },
+  ]);
+
+  const handleTap = useCallback(
+    (canvasX: number, canvasY: number, viewport: Viewport) => {
+      if (onCellPress === undefined) {
+        return;
+      }
+      // The tap arrives in canvas space; the hit test needs pattern space.
+      const point = canvasToPattern(canvasX, canvasY, viewport);
+      const hit = cellAtPoint(point.x, point.y, {
+        width: pattern.width,
+        height: pattern.height,
+        cellSize: baseCellSize,
+      });
+      if (hit !== null) {
+        onCellPress(hit.x, hit.y);
+      }
+    },
+    [onCellPress, pattern.width, pattern.height, baseCellSize],
+  );
+
+  const gesture = createGesture(
+    { scale, translateX, translateY, startScale, startX, startY },
+    bounds,
+    handleTap,
+  );
 
   // Expanded once per render rather than per cell: getCell is O(runs in row),
   // so reading cell by cell would be quadratic in run count.
@@ -186,7 +329,7 @@ export default function PatternCanvas({
         content.forEach((placement, index) => {
           drawn.push({
             key: `${x}-${y}-${index}`,
-            path: placementPath(placement, x * cellSize, y * cellSize, cellSize),
+            path: placementPath(placement, x * baseCellSize, y * baseCellSize, baseCellSize),
             color: palette.get(placement.thread) ?? '#999999',
             complete: isPlacementComplete(mask, index),
           });
@@ -195,100 +338,94 @@ export default function PatternCanvas({
     }
 
     return drawn;
-  }, [pattern, project, cellSize, palette]);
+  }, [pattern, project, baseCellSize, palette]);
 
-  // Grid lines are drawn under the stitches so a partially filled cell still
-  // reads as a cell.
   const gridLines = useMemo(() => {
     const lines: { key: string; p1: ReturnType<typeof vec>; p2: ReturnType<typeof vec> }[] = [];
+    const w = bounds.contentWidth;
+    const h = bounds.contentHeight;
     for (let x = 0; x <= pattern.width; x += 1) {
-      lines.push({ key: `v${x}`, p1: vec(x * cellSize, 0), p2: vec(x * cellSize, height) });
+      lines.push({ key: `v${x}`, p1: vec(x * baseCellSize, 0), p2: vec(x * baseCellSize, h) });
     }
     for (let y = 0; y <= pattern.height; y += 1) {
-      lines.push({ key: `h${y}`, p1: vec(0, y * cellSize), p2: vec(width, y * cellSize) });
+      lines.push({ key: `h${y}`, p1: vec(0, y * baseCellSize), p2: vec(w, y * baseCellSize) });
     }
     return lines;
-  }, [pattern.width, pattern.height, cellSize, width, height]);
+  }, [pattern.width, pattern.height, baseCellSize, bounds.contentWidth, bounds.contentHeight]);
 
-  const containerRef = useRef<View>(null);
+  // Hairlines at low zoom merge into a solid wash, so they fade out instead.
+  const gridOpacity = useDerivedValue(() => (scale.value < GRID_LINE_MIN_SCALE ? 0 : 1));
 
   const canvas = (
-    <Canvas style={{ width, height }}>
-      <Rect x={0} y={0} width={width} height={height} color={BACKGROUND_COLOR} />
+    <Canvas style={{ width: viewWidth, height: viewHeight }}>
+      <Group transform={transform}>
+        <Rect
+          x={0}
+          y={0}
+          width={bounds.contentWidth}
+          height={bounds.contentHeight}
+          color={BACKGROUND_COLOR}
+        />
 
-      {gridLines.map((line) => (
-        <Line key={line.key} p1={line.p1} p2={line.p2} color={GRID_LINE_COLOR} strokeWidth={1} />
-      ))}
-
-      {placements.map((placement) => (
-        <Group key={placement.key} opacity={placement.complete ? COMPLETED_OPACITY : 1}>
-          <Path path={placement.path} color={placement.color} />
+        <Group opacity={gridOpacity}>
+          {gridLines.map((line) => (
+            <Line
+              key={line.key}
+              p1={line.p1}
+              p2={line.p2}
+              color={GRID_LINE_COLOR}
+              strokeWidth={1}
+            />
+          ))}
         </Group>
-      ))}
 
-      {/*
-        Line and point stitches sit on the shared coordinate space, where
-        integers are grid intersections. They therefore draw over cell
-        boundaries rather than inside cells, which is the whole reason they
-        are not part of the cell grid.
+        {placements.map((placement) => (
+          <Group key={placement.key} opacity={placement.complete ? COMPLETED_OPACITY : 1}>
+            <Path path={placement.path} color={placement.color} />
+          </Group>
+        ))}
 
-        Their progress lives in its own run lists, indexed by position in
-        pattern.lines and pattern.points, not in the cell mask.
-      */}
-      {pattern.lines.map((line, index) => (
-        <Group
-          key={line.id}
-          opacity={getRunListValue(project.lineProgress, index) ? COMPLETED_OPACITY : 1}
-        >
-          <Line
-            p1={vec(line.from.x * cellSize, line.from.y * cellSize)}
-            p2={vec(line.to.x * cellSize, line.to.y * cellSize)}
-            color={palette.get(line.thread) ?? '#333333'}
-            strokeWidth={Math.max(1.5, cellSize * 0.12)}
-            strokeCap="round"
-          />
-        </Group>
-      ))}
+        {/*
+          Line and point stitches sit on the shared coordinate space, where
+          integers are grid intersections, so they draw over cell boundaries
+          rather than inside cells. Their progress lives in its own run lists,
+          indexed by position in pattern.lines and pattern.points.
+        */}
+        {pattern.lines.map((line, index) => (
+          <Group
+            key={line.id}
+            opacity={getRunListValue(project.lineProgress, index) ? COMPLETED_OPACITY : 1}
+          >
+            <Line
+              p1={vec(line.from.x * baseCellSize, line.from.y * baseCellSize)}
+              p2={vec(line.to.x * baseCellSize, line.to.y * baseCellSize)}
+              color={palette.get(line.thread) ?? '#333333'}
+              strokeWidth={Math.max(1.5, baseCellSize * 0.12)}
+              strokeCap="round"
+            />
+          </Group>
+        ))}
 
-      {pattern.points.map((point, index) => (
-        <Group
-          key={point.id}
-          opacity={getRunListValue(project.pointProgress, index) ? COMPLETED_OPACITY : 1}
-        >
-          <Circle
-            cx={point.at.x * cellSize}
-            cy={point.at.y * cellSize}
-            r={Math.max(2, cellSize * 0.18)}
-            color={palette.get(point.thread) ?? '#333333'}
-          />
-        </Group>
-      ))}
+        {pattern.points.map((point, index) => (
+          <Group
+            key={point.id}
+            opacity={getRunListValue(project.pointProgress, index) ? COMPLETED_OPACITY : 1}
+          >
+            <Circle
+              cx={point.at.x * baseCellSize}
+              cy={point.at.y * baseCellSize}
+              r={Math.max(2, baseCellSize * 0.18)}
+              color={palette.get(point.thread) ?? '#333333'}
+            />
+          </Group>
+        ))}
+      </Group>
     </Canvas>
   );
 
-  if (onCellPress === undefined) {
-    return canvas;
-  }
-
   return (
-    // Coordinates come from the touch/pointer event rather than Pressable's
-    // locationX/locationY, which React Native Web leaves undefined. Measuring
-    // the view and subtracting its page offset works identically on native and
-    // web, and pan/zoom (#43) can transform the result before the hit test.
-    <View
-      ref={containerRef}
-      onStartShouldSetResponder={() => true}
-      onResponderRelease={(event) => {
-        const { pageX, pageY } = event.nativeEvent;
-        containerRef.current?.measure((_x, _y, _w, _h, px, py) => {
-          const hit = cellAtPointInPattern(pageX - px, pageY - py, pattern, cellSize);
-          if (hit !== null) {
-            onCellPress(hit.x, hit.y);
-          }
-        });
-      }}
-    >
-      {canvas}
-    </View>
+    <GestureDetector gesture={gesture}>
+      <View style={{ width: viewWidth, height: viewHeight }}>{canvas}</View>
+    </GestureDetector>
   );
 }
