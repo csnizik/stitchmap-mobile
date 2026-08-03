@@ -40,7 +40,7 @@ describe('cellAtPoint', () => {
   it('scales with cell size', () => {
     expect(cellAtPoint(45, 45, { ...GRID, cellSize: 40 })).toEqual({ x: 1, y: 1 });
   });
-  
+
   it('returns null for non-finite coordinates', () => {
     // React Native Web does not populate locationX/locationY on Pressable.
     expect(cellAtPoint(NaN, 40, GRID)).toBeNull();
