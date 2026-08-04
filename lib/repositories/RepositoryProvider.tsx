@@ -24,6 +24,7 @@ import { FirestoreProjectStore } from './firestoreProjectStore';
 import { PatternRepository } from './patternRepository';
 import { ProjectRepository } from './projectRepository';
 import { useFlushOnBackground } from './useFlushOnBackground';
+import { useHydrateOnSignIn } from './useHydrateOnSignIn';
 
 export interface Repositories {
   readonly patterns: PatternRepository;
@@ -85,6 +86,17 @@ export function RepositoryProvider({ children, storage, repositories }: Reposito
   // only on the device at any moment. Backgrounding is the last reliable
   // chance to write before the OS may kill the app.
   useFlushOnBackground(value?.projects ?? null);
+
+  // The symmetric case to the flush below: pull the account's indexes when a
+  // user signs in, push pending work when they sign out. Metadata only, so a
+  // large library does not make sign-in slow.
+  useHydrateOnSignIn({
+    patterns: value?.patterns ?? null,
+    projects: value?.projects ?? null,
+    onSyncError: (error) => {
+      console.warn('[sync] hydration failed, working from local data', error.message);
+    },
+  });
 
   // The other loss window is sign-out, which tears these repositories down and
   // builds new ones. Flushing the outgoing set covers switching accounts as
