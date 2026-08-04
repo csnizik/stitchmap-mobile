@@ -21,6 +21,9 @@ been worked.
 - NativeWind for styling
 - Zustand + Immer for state
 - Firebase JS SDK (NOT @react-native-firebase) for Auth + Firestore
+- @shopify/react-native-skia for canvas rendering
+- react-native-gesture-handler + reanimated for pan and zoom
+- react-native-mmkv (native) and IndexedDB (web) behind StorageAdapter
 - jest-expo + React Native Testing Library for tests
 - Sentry (@sentry/react-native) for error tracking
 - EAS for builds
@@ -46,6 +49,30 @@ checks.
   expo install pins versions to the SDK 56 set; npm install floats them and
   breaks peer ranges (e.g. react / react-test-renderer must be the same version).
 
+## Triage — before changing any code
+
+When something does not work, work through these before editing. Each exists
+because skipping it cost a full session.
+
+- **Read the documentation for the exact installed version.** Not a blog post,
+  not memory, not the latest docs. Check `package.json` for the version, then
+  read that version's documentation or its type definitions in `node_modules`.
+  APIs move between majors: reanimated replaced `runOnJS` with `scheduleOnRN`,
+  MMKV v4 turned `MMKV` into a type with a `createMMKV` factory and renamed
+  `delete` to `remove`. Every one of those was found by guessing first.
+- **Confirm the fixture can demonstrate the behaviour under test.** A chart that
+  fits the viewport cannot exercise zoom; an empty list cannot exercise
+  pagination. A day was lost to zoom that "looked broken" on an 8x8 sample whose
+  entire zoom range was 5.5 to 6. The code was correct throughout.
+- **When adding a diagnostic log, state which function it is inside and confirm
+  that function runs on the path being tested.** Silence from a log that never
+  executes is not evidence, and was repeatedly read as evidence.
+- **Rule out the environment before suspecting the code.** Check for stale
+  processes, cached state, and tool versions. Specifically `lsof -i:8081` before
+  trusting any Metro restart: a Metro server from an earlier session held a
+  stale file index through an entire debugging session while every `--clear`
+  started a different server on a different port.
+
 ## Git and toolchain hygiene
 
 These exist because each has broken CI or destroyed work at least once.
@@ -68,6 +95,10 @@ These exist because each has broken CI or destroyed work at least once.
   different major version. npm 10 and npm 11 disagree about platform-specific
   optional dependencies, which produces a lockfile that looks fine locally and
   fails `npm ci` in CI.
+- **Do not delete `ios/` build output selectively.** Codegen writes into
+  `ios/build/generated`, and removing it breaks the next native build with
+  missing input files. Delete the whole `ios/` directory and re-run prebuild
+  instead; it is gitignored.
 
 ## Conventions
 
@@ -78,6 +109,9 @@ These exist because each has broken CI or destroyed work at least once.
 - Tests live alongside the code and must not require paid services or network
   access to run. Tests needing the Firestore emulator live in `firestore-tests/`
   and run only via `npm run test:rules`, never in CI.
+- Test files using TypeScript generics on a call must be `.ts`, not `.tsx`,
+  where the parser reads angle brackets as JSX. Type the callback parameter
+  instead when the file must be `.tsx`.
 - Before requesting review, merge the latest `develop` into your branch to keep
   the conflict surface small. Favor small, promptly-opened PRs over long-lived
   branches that drift from `develop`.
